@@ -74,4 +74,4 @@ markers = [
     "evals: marks tests as eval suite (run separately)",
     "integration: requires external services",
 ]
-testpaths = ["packages", "apps"]
+testpaths = ["packages", "apps", "tests"]
