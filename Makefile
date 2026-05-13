@@ -10,9 +10,9 @@ install: ## Install dependencies
 dev: ## Run API in dev mode
 	uv run uvicorn apps.api.main:app --reload --port 8000
 
-test: ## Run unit tests (excludes evals)
+test: ## Run unit tests (excludes evals and slow)
 	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
-	PYTHONPATH=. uv run pytest -m "not evals" -v
+	PYTHONPATH=. uv run pytest -m "not evals and not slow" -v
 
 eval: ## Run eval suite
 	uv run pytest -m "evals" -v
