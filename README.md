@@ -1,4 +1,4 @@
-# Spacebio Translator
+# SpaceCowboy Compliance
 
 **Compliance analysis for biotech experiments destined for low-Earth orbit.**
 
