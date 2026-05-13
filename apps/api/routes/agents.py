@@ -8,6 +8,8 @@ from packages.agents.microgravity.agent import MicrogravityAgent
 from packages.agents.microgravity.schemas import MicrogravityAgentOutput
 from packages.agents.mission.agent import MissionAgent
 from packages.agents.mission.schemas import MissionAgentOutput
+from packages.agents.regulatory.agent import RegulatoryAgent
+from packages.agents.regulatory.schemas import RegulatoryAgentOutput
 from packages.agents.safety.agent import SafetyAgent
 from packages.agents.safety.schemas import SafetyAgentOutput
 
@@ -74,4 +76,21 @@ async def mission_analyze(protocol: ProtocolRequirements) -> MissionAgentOutput:
         raise HTTPException(
             status_code=500,
             detail=f"Mission agent failed: {type(e).__name__}: {e}",
+        ) from e
+
+
+@router.post("/regulatory/analyze", response_model=RegulatoryAgentOutput)
+async def regulatory_analyze(protocol: ProtocolRequirements) -> RegulatoryAgentOutput:
+    """Analyze a biotech protocol for regulatory pathway requirements.
+
+    Returns applicable regulatory frameworks, compliance requirements,
+    review processes, and open questions requiring external counsel.
+    """
+    try:
+        agent = RegulatoryAgent()
+        return await agent.analyze(protocol)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Regulatory agent failed: {type(e).__name__}: {e}",
         ) from e
