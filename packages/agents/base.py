@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TypeVar
+from typing import TypedDict, TypeVar
 
 import anthropic
 import structlog
@@ -12,6 +12,13 @@ from apps.api.config import get_settings
 logger = structlog.get_logger(__name__)
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
+
+
+class ClaudeCallMetadata(TypedDict):
+    duration_ms: int
+    input_tokens: int
+    output_tokens: int
+    model: str
 
 
 class AgentMetadata(BaseModel):
@@ -47,7 +54,7 @@ async def call_claude_structured(
     model: str = "claude-sonnet-4-5",
     max_tokens: int = 4096,
     temperature: float = 0.0,
-) -> tuple[TOutput, dict[str, object]]:
+) -> tuple[TOutput, ClaudeCallMetadata]:
     """Call Claude with a system prompt and user prompt, parse structured output.
 
     Returns (parsed_output, raw_metadata).
@@ -91,7 +98,7 @@ async def call_claude_structured(
         )
         raise
 
-    metadata = {
+    metadata: ClaudeCallMetadata = {
         "duration_ms": duration_ms,
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
