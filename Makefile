@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean
+.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean ingest
 
 help:
 	@echo "Available targets:"
@@ -51,6 +51,14 @@ migrate: ## Run migrations
 
 migration: ## Create new migration (usage: make migration name=add_foo)
 	uv run alembic revision --autogenerate -m "$(name)"
+
+ingest: ## Ingest a PDF. Usage: make ingest path=... title=... type=... url=...
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/ingest_pdf.py \
+		--path "$(path)" \
+		--source-type "$(type)" \
+		--title "$(title)" \
+		--source-url "$(url)"
 
 clean: ## Clean caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
