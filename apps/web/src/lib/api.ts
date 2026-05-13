@@ -91,3 +91,62 @@ export async function analyzeProtocol(
 
   return response.json()
 }
+
+// ── Streaming types and function ──────────────────────────────────────────────
+
+export type StreamEvent =
+  | {
+      type: 'progress'
+      agent: string
+      succeeded: boolean
+      duration_ms: number
+      error: string | null
+    }
+  | { type: 'complete'; report: OrchestratorReport }
+  | { type: 'error'; message: string }
+
+export interface AgentProgress {
+  succeeded: boolean
+  duration_ms: number
+}
+
+export async function* analyzeProtocolStream(
+  protocol: ProtocolRequirements,
+): AsyncGenerator<StreamEvent> {
+  const response = await fetch(`${API_BASE_URL}/agents/orchestrator/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(protocol),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new ApiError(text || `Request failed: ${response.status}`, response.status)
+  }
+
+  if (!response.body) throw new ApiError('No response body', 500)
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop() ?? ''
+
+    for (const part of parts) {
+      const line = part.trim()
+      if (!line.startsWith('data: ')) continue
+      try {
+        yield JSON.parse(line.slice(6)) as StreamEvent
+      } catch {
+        console.warn('Failed to parse SSE event:', line)
+      }
+    }
+  }
+}

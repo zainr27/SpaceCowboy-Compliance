@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { ProtocolInput } from '@/components/ProtocolInput'
 import { AnalysisReport } from '@/components/AnalysisReport'
 import { AnalysisProgress } from '@/components/AnalysisProgress'
-import { analyzeProtocol, type ProtocolRequirements, type OrchestratorReport } from '@/lib/api'
+import { analyzeProtocolStream, type ProtocolRequirements, type OrchestratorReport, type AgentProgress } from '@/lib/api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -32,35 +32,64 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
+  const [completedAgents, setCompletedAgents] = useState<Record<string, AgentProgress>>({})
+  const [elapsed, setElapsed] = useState(0)
   const conversationEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (messages.length === 0 && !isLoading) return
-    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    const timer = setTimeout(() => {
+      conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    }, 100)
+    return () => clearTimeout(timer)
   }, [messages, isLoading])
 
   async function handleSubmit(protocol: ProtocolRequirements) {
     setError(null)
     setIsLoading(true)
+    setCompletedAgents({})
+    setElapsed(0)
 
     setMessages(prev => [
       ...prev,
       { role: 'user', content: protocol.description, timestamp: new Date() },
     ])
 
+    const startTime = Date.now()
+    const timer = setInterval(() => setElapsed(Date.now() - startTime), 100)
+
     try {
-      const report = await analyzeProtocol(protocol)
-      setMessages(prev => [
-        ...prev,
-        { role: 'assistant', content: report, timestamp: new Date() },
-      ])
-      setInputValue('')
+      let finalReport: OrchestratorReport | null = null
+
+      for await (const event of analyzeProtocolStream(protocol)) {
+        if (event.type === 'progress') {
+          setCompletedAgents(prev => ({
+            ...prev,
+            [event.agent]: { succeeded: event.succeeded, duration_ms: event.duration_ms },
+          }))
+        } else if (event.type === 'complete') {
+          finalReport = event.report
+        } else if (event.type === 'error') {
+          throw new Error(event.message)
+        }
+      }
+
+      if (finalReport) {
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: finalReport!, timestamp: new Date() },
+        ])
+        setInputValue('')
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Analysis failed. Is the API running?'
       setError(message)
       setMessages(prev => prev.slice(0, -1))
     } finally {
+      clearInterval(timer)
       setIsLoading(false)
+      setCompletedAgents({})
+      setElapsed(0)
     }
   }
 
@@ -129,7 +158,13 @@ export default function Home() {
           ))}
 
           {/* Loading state */}
-          {isLoading && <AnalysisProgress isActive={isLoading} />}
+          {isLoading && (
+            <AnalysisProgress
+              isActive={isLoading}
+              completed={completedAgents}
+              elapsed={elapsed}
+            />
+          )}
 
           {/* Error state */}
           {error && (

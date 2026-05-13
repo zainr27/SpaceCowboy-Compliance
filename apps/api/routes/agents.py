@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import json as _json
+
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from packages.agents.hardware.agent import HardwareAgent
 from packages.agents.hardware.schemas import HardwareAgentOutput, ProtocolRequirements
@@ -12,6 +15,7 @@ from packages.agents.regulatory.agent import RegulatoryAgent
 from packages.agents.regulatory.schemas import RegulatoryAgentOutput
 from packages.agents.safety.agent import SafetyAgent
 from packages.agents.safety.schemas import SafetyAgentOutput
+from packages.orchestrator.executor import ParallelExecutor
 from packages.orchestrator.orchestrator import Orchestrator
 from packages.orchestrator.schemas import OrchestratorReport
 
@@ -113,3 +117,35 @@ async def orchestrator_analyze(protocol: ProtocolRequirements) -> OrchestratorRe
             status_code=500,
             detail=f"Orchestrator failed: {type(e).__name__}: {e}",
         ) from e
+
+
+@router.post("/orchestrator/stream")
+async def orchestrator_stream(
+    protocol: ProtocolRequirements,
+    request: Request,
+) -> StreamingResponse:
+    """Stream orchestrator progress as Server-Sent Events.
+
+    Each event is:  data: {json}\\n\\n
+    Event types: progress | complete | error
+    """
+    executor = ParallelExecutor()
+
+    async def generate():  # type: ignore[return]
+        try:
+            async for event in executor.execute_streaming(protocol):
+                if await request.is_disconnected():
+                    break
+                yield f"data: {_json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {_json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

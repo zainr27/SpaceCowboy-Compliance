@@ -1,51 +1,22 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { AgentProgress } from '@/lib/api'
 
 const AGENTS = [
-  { key: 'hardware', label: 'Hardware compatibility', icon: '⬡' },
+  { key: 'hardware',     label: 'Hardware compatibility',  icon: '⬡' },
   { key: 'microgravity', label: 'Microgravity adaptation', icon: '◎' },
-  { key: 'safety', label: 'Safety screening', icon: '◈' },
-  { key: 'mission', label: 'Mission integration', icon: '◉' },
-  { key: 'regulatory', label: 'Regulatory pathway', icon: '◫' },
+  { key: 'safety',       label: 'Safety screening',        icon: '◈' },
+  { key: 'mission',      label: 'Mission integration',     icon: '◉' },
+  { key: 'regulatory',   label: 'Regulatory pathway',      icon: '◫' },
 ]
-
-function useSimulatedProgress(isActive: boolean) {
-  const [completed, setCompleted] = useState<Set<string>>(new Set())
-  const [elapsed, setElapsed] = useState(0)
-
-  useEffect(() => {
-    if (!isActive) {
-      setCompleted(new Set())
-      setElapsed(0)
-      return
-    }
-
-    const ticker = setInterval(() => setElapsed(e => e + 100), 100)
-
-    const timeouts = AGENTS.map((agent, i) => {
-      const delay = 3000 + i * 1800 + Math.random() * 1000
-      return setTimeout(() => {
-        setCompleted(prev => new Set([...prev, agent.key]))
-      }, delay)
-    })
-
-    return () => {
-      clearInterval(ticker)
-      timeouts.forEach(clearTimeout)
-    }
-  }, [isActive])
-
-  return { completed, elapsed }
-}
 
 interface AnalysisProgressProps {
   isActive: boolean
+  completed: Record<string, AgentProgress>
+  elapsed: number
 }
 
-export function AnalysisProgress({ isActive }: AnalysisProgressProps) {
-  const { completed, elapsed } = useSimulatedProgress(isActive)
-
+export function AnalysisProgress({ isActive, completed, elapsed }: AnalysisProgressProps) {
   if (!isActive) return null
 
   return (
@@ -61,24 +32,41 @@ export function AnalysisProgress({ isActive }: AnalysisProgressProps) {
 
       <div className="space-y-2.5">
         {AGENTS.map(agent => {
-          const isDone = completed.has(agent.key)
+          const progress = completed[agent.key]
+          const isDone = !!progress
+
           return (
             <div key={agent.key} className="flex items-center gap-3">
               <span
-                className="text-base transition-colors duration-500"
-                style={{ color: isDone ? 'var(--color-accent)' : 'var(--color-ink-tertiary)' }}
+                className="text-base transition-colors duration-300"
+                style={{
+                  color: isDone
+                    ? progress.succeeded
+                      ? 'var(--color-accent)'
+                      : 'var(--color-error)'
+                    : 'var(--color-ink-tertiary)',
+                }}
               >
                 {agent.icon}
               </span>
               <span
-                className="text-sm transition-colors duration-500"
+                className="text-sm transition-colors duration-300"
                 style={{ color: isDone ? 'var(--color-ink-primary)' : 'var(--color-ink-tertiary)' }}
               >
                 {agent.label}
               </span>
               <div className="flex-1" />
               {isDone ? (
-                <span className="text-xs font-mono" style={{ color: 'var(--color-success)' }}>done</span>
+                <span
+                  className="text-xs font-mono"
+                  style={{
+                    color: progress.succeeded ? 'var(--color-success)' : 'var(--color-error)',
+                  }}
+                >
+                  {progress.succeeded
+                    ? `${(progress.duration_ms / 1000).toFixed(1)}s`
+                    : 'failed'}
+                </span>
               ) : (
                 <span className="flex gap-0.5">
                   {[0, 1, 2].map(i => (
