@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.python-version
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Env
+.env
+.env.local
+
+# Corpus (large files, downloaded via scripts)
+corpus/nasa_payload_guides/*.pdf
+corpus/casis_solicitations/*.pdf
+corpus/iss_annual_reports/*.pdf
+corpus/papers/*.pdf
+!corpus/**/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Data
+*.sqlite
+*.db
