@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search hw-agent mg-agent safety-agent mission-agent reg-agent
+.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search hw-agent mg-agent safety-agent mission-agent reg-agent orchestrate
 
 help:
 	@echo "Available targets:"
@@ -91,6 +91,10 @@ mission-agent: ## Run mission integration agent. Usage: make mission-agent prese
 reg-agent: ## Run regulatory pathway agent. Usage: make reg-agent preset=cell_culture
 	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
 	PYTHONPATH=. uv run python scripts/regulatory_agent.py --preset "$(preset)"
+
+orchestrate: ## Run full orchestrator. Usage: make orchestrate preset=plant_growth
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/orchestrate.py --preset "$(preset)"
 
 clean: ## Clean caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

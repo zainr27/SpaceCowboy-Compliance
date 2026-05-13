@@ -12,6 +12,8 @@ from packages.agents.regulatory.agent import RegulatoryAgent
 from packages.agents.regulatory.schemas import RegulatoryAgentOutput
 from packages.agents.safety.agent import SafetyAgent
 from packages.agents.safety.schemas import SafetyAgentOutput
+from packages.orchestrator.orchestrator import Orchestrator
+from packages.orchestrator.schemas import OrchestratorReport
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -93,4 +95,21 @@ async def regulatory_analyze(protocol: ProtocolRequirements) -> RegulatoryAgentO
         raise HTTPException(
             status_code=500,
             detail=f"Regulatory agent failed: {type(e).__name__}: {e}",
+        ) from e
+
+
+@router.post("/orchestrator/analyze", response_model=OrchestratorReport)
+async def orchestrator_analyze(protocol: ProtocolRequirements) -> OrchestratorReport:
+    """Run the complete five-agent analysis on a biotech protocol.
+
+    Returns a unified report with executive summary, per-agent results,
+    cross-agent insights, deduplicated citations, and aggregated open questions.
+    """
+    try:
+        orch = Orchestrator()
+        return await orch.analyze(protocol)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Orchestrator failed: {type(e).__name__}: {e}",
         ) from e
