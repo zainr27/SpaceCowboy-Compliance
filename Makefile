@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search
+.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search hw-agent
 
 help:
 	@echo "Available targets:"
@@ -71,6 +71,10 @@ search: ## Search the knowledge base. Usage: make search q="your query"
 agent-search: ## Profile-scoped KB search. Usage: make agent-search profile=hardware q="..."
 	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
 	PYTHONPATH=. uv run python scripts/agent_search.py "$(profile)" "$(q)"
+
+hw-agent: ## Run hardware compatibility agent. Usage: make hw-agent preset=cell_culture
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/hardware_agent.py --preset "$(preset)"
 
 clean: ## Clean caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
