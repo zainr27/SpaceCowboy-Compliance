@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean ingest search agent-search
+.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search
 
 help:
 	@echo "Available targets:"
@@ -14,8 +14,12 @@ test: ## Run unit tests (excludes evals and slow)
 	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
 	PYTHONPATH=. uv run pytest -m "not evals and not slow" -v
 
-eval: ## Run eval suite
-	uv run pytest -m "evals" -v
+eval: ## Run the retrieval eval suite
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/run_evals.py
+
+eval-fast: ## Run evals without reranking (faster, no Cohere calls)
+	PYTHONPATH=. uv run python scripts/run_evals.py --no-rerank
 
 lint: ## Lint and auto-fix
 	uv run ruff check --fix .

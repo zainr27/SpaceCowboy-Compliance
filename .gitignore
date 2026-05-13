@@ -15,10 +15,7 @@ htmlcov/
 .env.local
 
 # Corpus (large files, downloaded via scripts)
-corpus/nasa_payload_guides/*.pdf
-corpus/casis_solicitations/*.pdf
-corpus/iss_annual_reports/*.pdf
-corpus/papers/*.pdf
+corpus/**/*.pdf
 !corpus/**/.gitkeep
 
 # IDE
