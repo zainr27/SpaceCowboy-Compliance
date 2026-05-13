@@ -6,6 +6,8 @@ from packages.agents.hardware.agent import HardwareAgent
 from packages.agents.hardware.schemas import HardwareAgentOutput, ProtocolRequirements
 from packages.agents.microgravity.agent import MicrogravityAgent
 from packages.agents.microgravity.schemas import MicrogravityAgentOutput
+from packages.agents.safety.agent import SafetyAgent
+from packages.agents.safety.schemas import SafetyAgentOutput
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -36,4 +38,21 @@ async def microgravity_analyze(protocol: ProtocolRequirements) -> MicrogravityAg
         raise HTTPException(
             status_code=500,
             detail=f"Microgravity agent failed: {type(e).__name__}: {e}",
+        ) from e
+
+
+@router.post("/safety/analyze", response_model=SafetyAgentOutput)
+async def safety_analyze(protocol: ProtocolRequirements) -> SafetyAgentOutput:
+    """Screen a biotech protocol for ISS safety review requirements.
+
+    Returns biosafety classification, hazards, containment requirements,
+    and NASA safety review milestones.
+    """
+    try:
+        agent = SafetyAgent()
+        return await agent.analyze(protocol)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Safety agent failed: {type(e).__name__}: {e}",
         ) from e

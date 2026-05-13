@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search hw-agent mg-agent
+.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search hw-agent mg-agent safety-agent
 
 help:
 	@echo "Available targets:"
@@ -79,6 +79,10 @@ hw-agent: ## Run hardware compatibility agent. Usage: make hw-agent preset=cell_
 mg-agent: ## Run microgravity adaptation agent. Usage: make mg-agent preset=plant_growth
 	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
 	PYTHONPATH=. uv run python scripts/microgravity_agent.py --preset "$(preset)"
+
+safety-agent: ## Run safety screening agent. Usage: make safety-agent preset=cell_culture
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/safety_agent.py --preset "$(preset)"
 
 clean: ## Clean caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
