@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean ingest
+.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean ingest search
 
 help:
 	@echo "Available targets:"
@@ -11,7 +11,8 @@ dev: ## Run API in dev mode
 	uv run uvicorn apps.api.main:app --reload --port 8000
 
 test: ## Run unit tests (excludes evals)
-	uv run pytest -m "not evals" -v
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run pytest -m "not evals" -v
 
 eval: ## Run eval suite
 	uv run pytest -m "evals" -v
@@ -59,6 +60,9 @@ ingest: ## Ingest a PDF. Usage: make ingest path=... title=... type=... url=...
 		--source-type "$(type)" \
 		--title "$(title)" \
 		--source-url "$(url)"
+
+search: ## Search the knowledge base. Usage: make search q="your query"
+	PYTHONPATH=. uv run python scripts/retrieve.py "$(q)"
 
 clean: ## Clean caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
