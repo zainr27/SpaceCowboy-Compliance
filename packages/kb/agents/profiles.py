@@ -45,7 +45,12 @@ PROFILES: dict[AgentProfile, ProfileConfig] = {
     ),
     AgentProfile.MISSION: ProfileConfig(
         profile=AgentProfile.MISSION,
-        source_types=["nasa_payload_guide", "iss_annual_report", "casis_solicitation"],
+        source_types=[
+            "nasa_payload_guide",
+            "iss_annual_report",
+            "casis_solicitation",
+            "hardware_spec",
+        ],
         description="Mission integration, upmass/downmass, crew time, sample preservation, timeline.",
     ),
     AgentProfile.REGULATORY: ProfileConfig(
