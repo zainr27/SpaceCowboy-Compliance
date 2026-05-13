@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { ProtocolInput } from '@/components/ProtocolInput'
 import { AnalysisReport } from '@/components/AnalysisReport'
 import { AnalysisProgress } from '@/components/AnalysisProgress'
@@ -35,14 +35,6 @@ export default function Home() {
   const [completedAgents, setCompletedAgents] = useState<Record<string, AgentProgress>>({})
   const [elapsed, setElapsed] = useState(0)
   const conversationEndRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (messages.length === 0 && !isLoading) return
-    const timer = setTimeout(() => {
-      conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [messages, isLoading])
 
   async function handleSubmit(protocol: ProtocolRequirements) {
     setError(null)
@@ -109,7 +101,7 @@ export default function Home() {
       </header>
 
       {/* Conversation area — scrolls independently */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 scroll-smooth">
         <div className="max-w-[56rem] mx-auto px-6 py-8 space-y-8">
 
           {/* Empty state */}
@@ -139,7 +131,7 @@ export default function Home() {
 
           {/* Message history */}
           {messages.map((message, i) => (
-            <div key={i}>
+            <div key={i} className="animate-fade-up">
               {message.role === 'user' ? (
                 <div className="flex justify-end mb-6">
                   <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-[var(--color-accent)] text-white px-5 py-3.5">
@@ -159,11 +151,13 @@ export default function Home() {
 
           {/* Loading state */}
           {isLoading && (
+            <div className="animate-fade-up">
             <AnalysisProgress
               isActive={isLoading}
               completed={completedAgents}
               elapsed={elapsed}
             />
+            </div>
           )}
 
           {/* Error state */}
