@@ -45,7 +45,7 @@ Results are persisted to the `eval_runs` table for trend tracking.
 
 **TODO: The eval set is currently lexically easy.** Coverage scores trend high (0.9+) because expected keywords are exact domain jargon that appears verbatim in a single document. Before relying on these numbers as a regression signal, add 5–10 paraphrased queries that test semantic retrieval rather than keyword matching — e.g., ask about "air mixture oxygen fraction management" instead of "ECLSS pressure" to force the system to match on meaning rather than token overlap.
 
-**Corpus gap:** The ELV payload safety review document (NTRS 20130011541) is not yet in the corpus. The `safety_payload_review_01` eval example currently targets ECLSS safety content as a stand-in. Add the ELV doc via `make ingest` when available to restore the original intent of that example.
+**Corpus gap:** The ELV payload safety review document (NTRS 20130011541) is not yet in the corpus. The `safety_eclss_flammability_01` eval example currently targets ECLSS payload safety content as a stand-in. Add the ELV doc via `make ingest` when available and add a dedicated `safety_elv_review_01` example to cover that intent properly.
 
 ## Development
 
