@@ -4,7 +4,11 @@ import time
 
 import structlog
 
-from packages.agents.base import call_claude_structured
+from packages.agents.base import (
+    MultiQueryRetrievalResult,
+    call_claude_structured,
+    retrieve_multi_query,
+)
 from packages.agents.hardware.prompts import SYSTEM_PROMPT, build_user_prompt
 from packages.agents.hardware.schemas import (
     HardwareAgentOutput,
@@ -12,7 +16,7 @@ from packages.agents.hardware.schemas import (
     ProtocolRequirements,
     ResolvedCitation,
 )
-from packages.kb.agents.knowledge_base import Citation, KnowledgeBase, SearchResult
+from packages.kb.agents.knowledge_base import Citation, KnowledgeBase
 from packages.kb.agents.profiles import AgentProfile
 
 logger = structlog.get_logger(__name__)
@@ -22,9 +26,9 @@ class HardwareAgent:
     """Maps experimental protocols to compatible ISS hardware.
 
     Pipeline:
-    1. Retrieve relevant hardware-focused content from KB (HARDWARE profile)
-    2. Format context with citation indices
-    3. Call Claude with system prompt + protocol + context
+    1. Decompose protocol into orthogonal retrieval queries
+    2. Parallel multi-query retrieval, merge by best score
+    3. Call LLM with system prompt + protocol + merged context
     4. Parse structured response, resolve citation indices to chunk metadata
     5. Return complete HardwareAgentOutput
     """
@@ -49,24 +53,32 @@ class HardwareAgent:
             duration_days=protocol.duration_days,
         )
 
-        retrieval_query = self._build_retrieval_query(protocol)
-        search_result = await self._kb.search(
-            query=retrieval_query,
-            top_n=retrieval_top_n,
+        queries = self._decompose_query(protocol)
+        logger.info(
+            "hardware_agent_query_decomposition",
+            query_count=len(queries),
+            queries=queries,
         )
 
-        if not search_result.chunks:
+        retrieval = await retrieve_multi_query(
+            kb=self._kb,
+            queries=queries,
+            per_query_k=10,
+            final_top_n=retrieval_top_n,
+        )
+
+        if not retrieval.chunks:
             logger.warning("hardware_agent_no_retrieval_results")
-            return self._empty_result(search_result)
+            return self._empty_result(retrieval)
 
         analysis, claude_meta = await call_claude_structured(
             system_prompt=SYSTEM_PROMPT,
-            user_prompt=build_user_prompt(protocol, search_result.formatted_context),
+            user_prompt=build_user_prompt(protocol, retrieval.formatted_context),
             output_schema=HardwareAnalysis,
             model=self._model,
         )
 
-        resolved_citations = self._resolve_citations(analysis, search_result.citations)
+        resolved_citations = self._resolve_citations(analysis, retrieval.citations)
 
         total_ms = int((time.monotonic() - start) * 1000)
         logger.info(
@@ -75,30 +87,65 @@ class HardwareAgent:
             gaps=len(analysis.gaps),
             overall_confidence=analysis.overall_confidence,
             total_ms=total_ms,
+            queries_used=queries,
         )
 
         return HardwareAgentOutput(
             analysis=analysis,
             citations=resolved_citations,
-            retrieval_chunks_used=len(search_result.chunks),
-            retrieval_ms=search_result.retrieval_ms,
+            retrieval_chunks_used=len(retrieval.chunks),
+            retrieval_ms=retrieval.total_retrieval_ms,
             reasoning_ms=claude_meta["duration_ms"],
         )
 
-    def _build_retrieval_query(self, protocol: ProtocolRequirements) -> str:
-        """Construct a retrieval query mixing semantic and keyword signal."""
-        parts = [protocol.description]
+    def _decompose_query(self, protocol: ProtocolRequirements) -> list[str]:
+        """Build 2-3 orthogonal queries targeting different facets of the protocol.
+
+        Query 1 (always): capability — what kind of hardware fits this experiment type.
+        Query 2 (if env signal): operating conditions (temp, CO2, humidity, biosafety).
+        Query 3 (if op signal): specific operations required (imaging, media exchange, etc).
+        """
+        queries: list[str] = []
+
+        # Query 1: Capability — always present
+        capability_parts = [protocol.description]
         if protocol.organism:
-            parts.append(f"organism: {protocol.organism}")
+            capability_parts.append(protocol.organism)
+        if protocol.intent == "commercial":
+            capability_parts.append("manufacturing production")
+        elif protocol.intent == "clinical_pathway":
+            capability_parts.append("therapeutic clinical")
+        queries.append(" ".join(capability_parts))
+
+        # Query 2: Environmental — only if there's real signal
+        env_parts = ["ISS hardware operating conditions"]
         if protocol.temperature_c is not None:
-            parts.append(f"temperature {protocol.temperature_c}C")
+            env_parts.append(f"temperature {protocol.temperature_c}C")
+        if protocol.humidity_pct is not None:
+            env_parts.append(f"humidity {protocol.humidity_pct}%")
         if protocol.co2_pct is not None:
-            parts.append(f"CO2 {protocol.co2_pct}%")
+            env_parts.append(f"CO2 {protocol.co2_pct}%")
+        if protocol.light_required:
+            env_parts.append("lighting illumination")
+        if protocol.biosafety_level:
+            env_parts.append(f"biosafety {protocol.biosafety_level} containment")
+        if len(env_parts) > 1:
+            queries.append(" ".join(env_parts))
+
+        # Query 3: Operational — only if the protocol needs specific operations
+        op_parts = []
         if protocol.requires_imaging:
-            parts.append("imaging microscopy")
+            op_parts.append("imaging microscopy video camera")
         if protocol.requires_media_exchange:
-            parts.append("media exchange perfusion")
-        return " ".join(parts)
+            op_parts.append("media exchange perfusion automated")
+        if protocol.requires_sample_return:
+            op_parts.append("sample return cold stowage downmass")
+        if protocol.duration_days and protocol.duration_days > 14:
+            op_parts.append(f"long duration {protocol.duration_days} days")
+        if op_parts:
+            queries.append("ISS hardware " + " ".join(op_parts))
+
+        return queries
 
     @staticmethod
     def _resolve_citations(
@@ -130,7 +177,7 @@ class HardwareAgent:
         return resolved
 
     @staticmethod
-    def _empty_result(search_result: SearchResult) -> HardwareAgentOutput:
+    def _empty_result(retrieval: MultiQueryRetrievalResult) -> HardwareAgentOutput:
         """Graceful empty result when retrieval found nothing."""
         return HardwareAgentOutput(
             analysis=HardwareAnalysis(
@@ -141,6 +188,6 @@ class HardwareAgent:
             ),
             citations=[],
             retrieval_chunks_used=0,
-            retrieval_ms=search_result.retrieval_ms,
+            retrieval_ms=retrieval.total_retrieval_ms,
             reasoning_ms=0,
         )
