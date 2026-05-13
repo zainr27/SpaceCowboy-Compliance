@@ -49,20 +49,33 @@ Results are persisted to the `eval_runs` table for trend tracking.
 
 ## Agents
 
+Two sub-agents are operational. Both use multi-query retrieval: each protocol is decomposed into 2–3 orthogonal queries, run in parallel via `KnowledgeBase.search_many()`, merged by best-score-per-chunk, and deduped before the LLM reasoning pass. The pattern is in `packages/agents/base.py:retrieve_multi_query()` and each agent overrides `_decompose_query()`.
+
+### Hardware Agent — ISS hardware compatibility
+
 ```bash
-make hw-agent preset=cell_culture          # Hardware compatibility analysis
+make hw-agent preset=cell_culture
 make hw-agent preset=plant_growth
 make hw-agent preset=protein_crystallization
-make hw-agent preset=cell_culture top_n=12  # Override retrieval depth
 ```
 
-The hardware agent uses multi-query retrieval: each protocol is decomposed into 2–3 orthogonal queries (capability, environmental, operational), run in parallel, merged by best-score-per-chunk, and deduped before the LLM reasoning pass. This pattern generalises to all sub-agents via `_decompose_query()`.
+Query facets: capability (what kind of hardware), environmental (temp/CO2/biosafety), operational (imaging/media exchange/sample return). Output: recommended hardware with fit scores, gaps with severity, resolved citations.
 
-### Hardware agent: known corpus gap
+Confidence as of last run: `protein_crystallization` 0.60, `plant_growth` 0.60, `cell_culture` 0.30.
 
-The `cell_culture` preset scores low confidence (0.30) because the corpus lacks hardware specs that address (a) automated media exchange and (b) fine-grained CO2 control. MVP's flysheet mentions 5% CO2 but not the precise control range; ADSEP doesn't address CO2 at all.
+**Known corpus gap:** `cell_culture` scores low because no hardware specs address automated media exchange or fine-grained CO2 control. Fix: ingest BioServe SABL or Space Tango cell culture cassette specs before building the orchestrator.
 
-Fix: ingest specs for BioServe SABL, Space Tango cell culture cassettes, or any incubator-class ISS hardware. Address before the orchestrator layer — cell culture is a common protocol category and the gap will be visible in synthesised output.
+### Microgravity Adaptation Agent — protocol modifications for spaceflight
+
+```bash
+make mg-agent preset=plant_growth
+make mg-agent preset=cell_culture
+make mg-agent preset=protein_crystallization
+```
+
+Query facets: physics (fluid/convection/diffusion), biology (organism-specific microgravity response), precedent (prior spaceflight experiments). Output: protocol modifications (earthbound assumption → microgravity reality → recommended change, each with severity), expected behaviors, research precedents — all grounded in retrieved sources.
+
+Confidence as of last run: `plant_growth` 0.80 (plant corpus is strong), `cell_culture` 0.70, `protein_crystallization` 0.70.
 
 ## Development
 
