@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean ingest search
+.PHONY: help install dev test eval lint type format db-up db-down db-shell db-reset clean ingest search agent-search
 
 help:
 	@echo "Available targets:"
@@ -63,6 +63,10 @@ ingest: ## Ingest a PDF. Usage: make ingest path=... title=... type=... url=...
 
 search: ## Search the knowledge base. Usage: make search q="your query"
 	PYTHONPATH=. uv run python scripts/retrieve.py "$(q)"
+
+agent-search: ## Profile-scoped KB search. Usage: make agent-search profile=hardware q="..."
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/agent_search.py "$(profile)" "$(q)"
 
 clean: ## Clean caches
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
