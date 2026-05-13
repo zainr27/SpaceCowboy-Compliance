@@ -142,10 +142,14 @@ async def retrieve_multi_query(
     queries: list[str],
     per_query_k: int = 10,
     final_top_n: int = 8,
+    min_docs: int = 3,
 ) -> MultiQueryRetrievalResult:
     """Run multiple queries in parallel, merge by best score, return top-N chunks.
 
     Deduplicates by chunk_id, keeping the highest rerank/fusion score per chunk.
+    Applies document diversity: reserves slots so at least min_docs distinct source
+    documents appear in the final context, preventing one large document from
+    monopolizing all slots.
     """
     start = time.monotonic()
 
@@ -169,11 +173,31 @@ async def retrieve_multi_query(
                 if score > existing_score:
                     merged[key] = chunk
 
-    sorted_chunks = sorted(
+    sorted_candidates = sorted(
         merged.values(),
         key=lambda c: c.rerank_score or c.fusion_score or 0.0,
         reverse=True,
-    )[:final_top_n]
+    )
+
+    # Document diversity: greedily fill slots, ensuring min_docs distinct documents
+    # appear before any single document can fill remaining slots.
+    seen_docs: set[str] = set()
+    diverse: list[RetrievedChunk] = []
+    deferred: list[RetrievedChunk] = []
+    for chunk in sorted_candidates:
+        doc_key = str(chunk.document_id)
+        if doc_key not in seen_docs or len(seen_docs) >= min_docs:
+            diverse.append(chunk)
+            seen_docs.add(doc_key)
+        else:
+            deferred.append(chunk)
+        if len(diverse) == final_top_n:
+            break
+    # Fill remaining slots with highest-scoring deferred chunks
+    if len(diverse) < final_top_n:
+        diverse.extend(deferred[: final_top_n - len(diverse)])
+
+    sorted_chunks = diverse[:final_top_n]
 
     citations = _build_citations_from_chunks(sorted_chunks)
     formatted = _format_context_multi_query(queries, sorted_chunks, citations)
