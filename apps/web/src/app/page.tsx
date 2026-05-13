@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { ProtocolInput } from '@/components/ProtocolInput'
 import { AnalysisReport } from '@/components/AnalysisReport'
 import { AnalysisProgress } from '@/components/AnalysisProgress'
@@ -12,10 +12,32 @@ interface Message {
   timestamp: Date
 }
 
+const EXAMPLE_CHIPS = [
+  {
+    label: 'Arabidopsis plant growth, 30 days',
+    description: 'A 30-day plant growth experiment with Arabidopsis thaliana, examining gravitropic response and seed-to-seed development under controlled humidity and light. Requires automated watering, CO2 regulation, imaging at 3-day intervals, and sample return at experiment end.',
+  },
+  {
+    label: 'CHO cell culture with CO2 control',
+    description: 'A 21-day cell culture experiment growing CHO cells at 37°C in DMEM medium with 5% CO2 supplementation. Media exchange required every 48 hours. Fluorescence imaging at days 0, 7, 14, and 21. Samples returned to Earth for downstream analysis.',
+  },
+  {
+    label: 'Protein crystallization, 100 samples',
+    description: 'Protein crystallization experiment using lysozyme as a model protein. Vapor diffusion method requiring 10 days of stable temperature at 20°C. 100 samples in parallel. No live organisms. Crystals must be returned to Earth for X-ray diffraction analysis.',
+  },
+]
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inputValue, setInputValue] = useState('')
+  const conversationEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (messages.length === 0 && !isLoading) return
+    conversationEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages, isLoading])
 
   async function handleSubmit(protocol: ProtocolRequirements) {
     setError(null)
@@ -32,6 +54,7 @@ export default function Home() {
         ...prev,
         { role: 'assistant', content: report, timestamp: new Date() },
       ])
+      setInputValue('')
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Analysis failed. Is the API running?'
       setError(message)
@@ -42,9 +65,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--color-background)]">
+    <div className="h-screen flex flex-col bg-[var(--color-background)]">
       {/* Header */}
-      <header className="border-b border-[var(--color-border-subtle)] bg-white sticky top-0 z-10">
+      <header className="border-b border-[var(--color-border-subtle)] bg-white shrink-0 z-10">
         <div className="max-w-[56rem] mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-2 h-2 rounded-full bg-[var(--color-accent)]" />
@@ -56,8 +79,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Conversation area */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Conversation area — scrolls independently */}
+      <div className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-[56rem] mx-auto px-6 py-8 space-y-8">
 
           {/* Empty state */}
@@ -72,17 +95,13 @@ export default function Home() {
                 mission integration, and regulatory pathway.
               </p>
               <div className="mt-8 flex flex-wrap justify-center gap-2">
-                {[
-                  'Arabidopsis plant growth study, 30 days, imaging required, BSL-1',
-                  'CHO cell culture with CO2 control, media exchange, 14 days',
-                  'Protein crystallization batch, 100 samples, no crew interaction needed',
-                ].map(example => (
+                {EXAMPLE_CHIPS.map(chip => (
                   <button
-                    key={example}
+                    key={chip.label}
                     className="text-sm text-[var(--color-ink-tertiary)] border border-[var(--color-border-subtle)] rounded-full px-4 py-1.5 hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors"
-                    onClick={() => handleSubmit({ description: example })}
+                    onClick={() => setInputValue(chip.description)}
                   >
-                    {example}
+                    {chip.label}
                   </button>
                 ))}
               </div>
@@ -119,12 +138,21 @@ export default function Home() {
               <p className="text-xs text-red-500 mt-1">Check that your API is running on port 8000.</p>
             </div>
           )}
+
+          {/* Scroll anchor */}
+          <div ref={conversationEndRef} className="h-4" />
         </div>
       </div>
 
-      {/* Input — fixed at bottom */}
-      <div className="sticky bottom-0">
-        <ProtocolInput onSubmit={handleSubmit} isLoading={isLoading} />
+      {/* Input — pinned at bottom */}
+      <div className="shrink-0">
+        <ProtocolInput
+          onSubmit={handleSubmit}
+          isLoading={isLoading}
+          value={inputValue}
+          onChange={setInputValue}
+          messageCount={messages.length}
+        />
       </div>
     </div>
   )

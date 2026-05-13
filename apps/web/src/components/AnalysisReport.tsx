@@ -151,10 +151,10 @@ function AgentSection({ title, confidence, children, defaultOpen = false }: {
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-[var(--color-surface-hover)] transition-colors"
       >
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-4 min-w-0">
           <span className="text-sm font-medium text-[var(--color-ink-primary)]">{title}</span>
           {confidence !== null && confidence !== undefined && (
-            <div className="w-32 shrink-0">
+            <div className="w-24 shrink-0">
               <ConfidenceBar score={confidence} showScore size="sm" />
             </div>
           )}

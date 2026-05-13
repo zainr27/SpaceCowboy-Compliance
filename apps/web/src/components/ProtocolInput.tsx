@@ -6,10 +6,12 @@ import { ProtocolRequirements } from '@/lib/api'
 interface ProtocolInputProps {
   onSubmit: (protocol: ProtocolRequirements) => void
   isLoading: boolean
+  value: string
+  onChange: (value: string) => void
+  messageCount: number
 }
 
-export function ProtocolInput({ onSubmit, isLoading }: ProtocolInputProps) {
-  const [description, setDescription] = useState('')
+export function ProtocolInput({ onSubmit, isLoading, value, onChange, messageCount }: ProtocolInputProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [details, setDetails] = useState<Partial<ProtocolRequirements>>({
     intent: 'research',
@@ -21,10 +23,10 @@ export function ProtocolInput({ onSubmit, isLoading }: ProtocolInputProps) {
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [description])
+  }, [value])
 
   function handleSubmit() {
-    const trimmed = description.trim()
+    const trimmed = value.trim()
     if (trimmed.length < 50 || isLoading) return
     onSubmit({ description: trimmed, ...details })
   }
@@ -36,7 +38,7 @@ export function ProtocolInput({ onSubmit, isLoading }: ProtocolInputProps) {
     }
   }
 
-  const canSubmit = description.trim().length >= 50 && !isLoading
+  const canSubmit = value.trim().length >= 50 && !isLoading
 
   return (
     <div className="border-t border-[var(--color-border-subtle)] bg-white">
@@ -145,8 +147,8 @@ export function ProtocolInput({ onSubmit, isLoading }: ProtocolInputProps) {
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
-              value={description}
-              onChange={e => setDescription(e.target.value)}
+              value={value}
+              onChange={e => onChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Describe your experimental protocol. What organism, what conditions, what are you trying to measure? (minimum 50 characters)"
               rows={1}
@@ -154,15 +156,21 @@ export function ProtocolInput({ onSubmit, isLoading }: ProtocolInputProps) {
               className="w-full resize-none text-sm px-4 py-3 rounded-xl border border-[var(--color-border)] bg-white text-[var(--color-ink-primary)] placeholder:text-[var(--color-ink-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)] focus:border-transparent transition-shadow disabled:opacity-50 leading-relaxed"
               style={{ minHeight: '48px', maxHeight: '200px' }}
             />
-            <div className="absolute bottom-2.5 right-3 text-xs text-[var(--color-ink-tertiary)] font-mono pointer-events-none">
-              {description.length < 50 ? `${50 - description.length} more` : '⌘↵'}
+            <div className="absolute bottom-2.5 right-3 text-[10px] text-[var(--color-ink-tertiary)] font-mono pointer-events-none">
+              {value.length < 50 ? `${50 - value.length} more` : '⌘↵'}
             </div>
           </div>
 
           <button
             onClick={handleSubmit}
-            disabled={!canSubmit}
-            className="px-4 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-medium transition-all hover:bg-[var(--color-accent-hover)] disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0 h-[48px]"
+            disabled={!canSubmit && !isLoading}
+            className={`px-4 py-3 rounded-xl text-white text-sm font-medium transition-all flex-shrink-0 h-[48px] ${
+              isLoading
+                ? 'bg-[var(--color-accent)] opacity-70 cursor-wait'
+                : canSubmit
+                ? 'bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] cursor-pointer'
+                : 'bg-[var(--color-accent)] opacity-30 cursor-not-allowed'
+            }`}
           >
             {isLoading ? (
               <span className="flex items-center gap-2">
@@ -175,9 +183,15 @@ export function ProtocolInput({ onSubmit, isLoading }: ProtocolInputProps) {
           </button>
         </div>
 
-        <p className="text-xs text-[var(--color-ink-tertiary)] mt-2">
-          Five agents run in parallel: hardware compatibility, microgravity adaptation, safety screening, mission integration, regulatory pathway.
-        </p>
+        {messageCount === 0 ? (
+          <p className="text-xs text-[var(--color-ink-tertiary)] mt-2">
+            Five agents run in parallel: hardware compatibility, microgravity adaptation, safety screening, mission integration, regulatory pathway.
+          </p>
+        ) : (
+          <p className="text-xs text-[var(--color-ink-tertiary)] mt-2">
+            Submit another protocol to add to the conversation.
+          </p>
+        )}
       </div>
     </div>
   )
