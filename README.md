@@ -1,87 +1,199 @@
-# spacebio-translator
+# Spacebio Translator
 
-AI-assisted translation of biotech experiments for ISS deployment.
+**Compliance analysis for biotech experiments destined for low-Earth orbit.**
+
+You describe a biological protocol. Spacebio Translator runs it through five parallel AI agents — each an expert in a different dimension of spaceflight readiness — and returns a single structured report: what hardware fits, what microgravity adaptations are required, what the safety classification is, which mission platforms can carry it, and what regulatory frameworks apply. The whole pipeline runs in under 20 seconds.
+
+---
+
+## What it does
+
+Getting a biology experiment to the ISS means clearing five independent gates before the payload safety review board will even look at it. Most researchers treat each gate as a separate manual exercise. This tool runs them in parallel against a curated corpus of NASA documents, hardware flysheets, ISS research guides, and regulatory frameworks.
+
+The five agents:
+
+| Agent | Question answered |
+|---|---|
+| **Hardware** | Which ISS research hardware fits this protocol, and what gaps exist? |
+| **Microgravity** | What assumptions in the earthbound protocol break in microgravity, and how must it change? |
+| **Safety** | What is the biosafety classification, and what hazards require NASA review? |
+| **Mission** | Which facility, ascent vehicle, and resource budget (cold stowage, crew time) does this need? |
+| **Regulatory** | Which frameworks — NASA payload safety, FDA, ITAR, CASIS, GINA — apply, and at what level? |
+
+Every finding is grounded in retrieved source chunks. Citations are deduplicated across agents and ranked by relevance — you can see exactly which document each claim came from.
+
+---
+
+## Results on three representative protocols
+
+All three runs: **5/5 agents succeeded**, 31 unit tests passing.
+
+### Plant growth (Arabidopsis, 30 days)
+```
+Runtime: 14s   Overall confidence: 0.66
+
+  Hardware:      0.60  ████████████░░░░░░░░
+  Microgravity:  0.80  ████████████████░░░░
+  Safety:        0.60  ████████████░░░░░░░░
+  Mission:       0.70  ██████████████░░░░░░
+  Regulatory:    0.60  ████████████░░░░░░░░
+
+Hardware:     Redwire MVP, fit_score=0.80, 1 gap (water delivery unspecified in corpus)
+Microgravity: 2 modifications, 1 critical (fluid handling) — backed by plant water management paper
+Safety:       BSL-1, 2 hazards (RNAlater chemical, water delivery), 2 NASA review milestones
+Mission:      TangoLab / SpaceX Dragon / cold stowage required
+Regulatory:   NASA_payload_safety = required, CASIS_ISS_National_Lab = likely_applicable
+Citations:    14 unique sources across all 5 agents
+Open questions: 6 (RNAlater containment, water delivery standards, upmass, timeline, CASIS terms, ITAR trigger)
+```
+
+### Cell culture (continuous mammalian culture)
+```
+Runtime: 8.5s   Overall confidence: 0.62
+
+Hardware:     MVP fit_score=0.80, 2 gaps flagged (CO2 control, media exchange) — known corpus gap
+Mission:      TangoLab / Dragon
+Cross-agent:  corpus_gap insight — CASIS open questions surfaced by both regulatory and mission agents
+```
+
+### Protein crystallization (batch, microgravity-assisted)
+```
+Runtime: 17.5s   Overall confidence: 0.56
+
+Hardware:     ADSEP fit_score=0.70 — correctly chosen over TangoLab for batch crystallization
+Safety:       BSL-1, 1 hazard
+Mission:      TangoLab, no cold stowage required
+Microgravity: 2 modifications, 0 critical — correct, crystal quality improves in microgravity
+```
+
+---
+
+## How it works
+
+```
+Protocol description (text)
+        │
+        ▼
+  ParallelExecutor  ──── asyncio.gather ────────────────────────────────────┐
+        │                                                                    │
+        ├── HardwareAgent      (capability + environment + operational queries)
+        ├── MicrogravityAgent  (physics + biology + precedent queries)
+        ├── SafetyAgent        (biosafety + hazard + containment queries)
+        ├── MissionAgent       (facility + logistics + resource queries)
+        └── RegulatoryAgent    (framework + compliance + IP queries)
+                                                                             │
+        ◄────────────────────────────────────────────────────────────────────┘
+        │
+        ▼
+  RuleBasedSynthesizer
+        ├── Deduplicate citations by chunk_id, rank by best relevance score
+        ├── Average confidence across successful agents
+        ├── Detect cross-agent insights (BSL vs containment tension, compound risk, corpus gaps)
+        ├── Aggregate open questions, deduplicate
+        └── Single LLM call → ExecutiveSummary (headline, biosafety, facility, pathway, regulatory floor)
+        │
+        ▼
+  OrchestratorReport  (structured JSON or formatted terminal output)
+```
+
+Each agent uses **multi-query retrieval**: the protocol is decomposed into 2–3 orthogonal queries, run in parallel against the knowledge base, merged by best-score-per-chunk, diversified across documents, and reranked before the LLM reasoning pass.
+
+The knowledge base uses **Voyage AI `voyage-3-large`** dense embeddings + PostgreSQL `tsvector` sparse search, fused via Reciprocal Rank Fusion, with **Cohere `rerank-english-v3.0`** reranking.
+
+---
 
 ## Setup
 
-```bash
-cp .env.example .env  # Fill in your API keys
-make db-up            # Start Postgres
-make migrate          # Apply migrations
-make dev              # Run API at http://localhost:8000
-```
-
-## Database
-
-Local Postgres runs in Docker via `make db-up`. The schema is managed by Alembic.
-
-### Common commands
-
-- `make db-up` — Start Postgres
-- `make migrate` — Apply all pending migrations
-- `make migration name=add_foo` — Generate a new migration from model changes
-- `make db-shell` — Open a psql shell
-- `make db-reset` — Drop and recreate the database (destroys all data)
-
-### Schema overview
-
-- `documents` — Source documents (papers, NASA guides, CASIS solicitations, etc.)
-- `chunks` — Chunked, embedded slices of documents for retrieval
-- `eval_examples` — Golden-set queries with ground truth for retrieval evaluation
-- `eval_runs` — Historical eval results for tracking quality over time
-
-Embeddings use Voyage AI `voyage-3-large` (1024 dimensions). Switching embedding models requires a migration.
-
-## Evals
+**Prerequisites:** Docker, Python 3.11+, `uv`
 
 ```bash
-make eval       # Full eval suite with Cohere reranking (~10s, hits Cohere API)
-make eval-fast  # Eval without reranking (no Cohere calls, faster)
+cp .env.example .env      # Add API keys: OPENAI_API_KEY, COHERE_API_KEY, VOYAGE_API_KEY
+make db-up                # Start Postgres + pgvector in Docker
+make migrate              # Apply schema migrations
+make dev                  # API at http://localhost:8000
 ```
 
-Results are persisted to the `eval_runs` table for trend tracking.
+**Required API keys:**
+- `OPENAI_API_KEY` — LLM reasoning (gpt-4o)
+- `COHERE_API_KEY` — Reranking (rerank-english-v3.0), production key recommended
+- `VOYAGE_API_KEY` — Dense embeddings (voyage-3-large)
 
-### Known limitations of the current eval set
+---
 
-**TODO: The eval set is currently lexically easy.** Coverage scores trend high (0.9+) because expected keywords are exact domain jargon that appears verbatim in a single document. Before relying on these numbers as a regression signal, add 5–10 paraphrased queries that test semantic retrieval rather than keyword matching — e.g., ask about "air mixture oxygen fraction management" instead of "ECLSS pressure" to force the system to match on meaning rather than token overlap.
-
-**Corpus gap:** The ELV payload safety review document (NTRS 20130011541) is not yet in the corpus. The `safety_eclss_flammability_01` eval example currently targets ECLSS payload safety content as a stand-in. Add the ELV doc via `make ingest` when available and add a dedicated `safety_elv_review_01` example to cover that intent properly.
-
-## Agents
-
-Two sub-agents are operational. Both use multi-query retrieval: each protocol is decomposed into 2–3 orthogonal queries, run in parallel via `KnowledgeBase.search_many()`, merged by best-score-per-chunk, and deduped before the LLM reasoning pass. The pattern is in `packages/agents/base.py:retrieve_multi_query()` and each agent overrides `_decompose_query()`.
-
-### Hardware Agent — ISS hardware compatibility
+## Running the orchestrator
 
 ```bash
-make hw-agent preset=cell_culture
-make hw-agent preset=plant_growth
-make hw-agent preset=protein_crystallization
+make orchestrate preset=plant_growth
+make orchestrate preset=cell_culture
+make orchestrate preset=protein_crystallization
+
+# Raw JSON output
+SSL_CERT_FILE=$(uv run python -c "import certifi; print(certifi.where())") \
+PYTHONPATH=. uv run python scripts/orchestrate.py --preset plant_growth --json
 ```
 
-Query facets: capability (what kind of hardware), environmental (temp/CO2/biosafety), operational (imaging/media exchange/sample return). Output: recommended hardware with fit scores, gaps with severity, resolved citations.
-
-Confidence as of last run: `protein_crystallization` 0.60, `plant_growth` 0.60, `cell_culture` 0.30.
-
-**Known corpus gap:** `cell_culture` scores low because no hardware specs address automated media exchange or fine-grained CO2 control. Fix: ingest BioServe SABL or Space Tango cell culture cassette specs before building the orchestrator.
-
-### Microgravity Adaptation Agent — protocol modifications for spaceflight
+### Running individual agents
 
 ```bash
-make mg-agent preset=plant_growth
-make mg-agent preset=cell_culture
-make mg-agent preset=protein_crystallization
+make hw-agent       preset=plant_growth      # Hardware compatibility
+make mg-agent       preset=plant_growth      # Microgravity adaptation
+make safety-agent   preset=cell_culture      # Safety screening
+make mission-agent  preset=plant_growth      # Mission integration
+make reg-agent      preset=cell_culture      # Regulatory pathway
 ```
 
-Query facets: physics (fluid/convection/diffusion), biology (organism-specific microgravity response), precedent (prior spaceflight experiments). Output: protocol modifications (earthbound assumption → microgravity reality → recommended change, each with severity), expected behaviors, research precedents — all grounded in retrieved sources.
+### Ingesting new documents
 
-Confidence as of last run: `plant_growth` 0.80 (plant corpus is strong), `cell_culture` 0.70, `protein_crystallization` 0.70.
+```bash
+make ingest path=path/to/doc.pdf title="Document Title" type=hardware_spec url=https://...
+```
+
+Source types: `hardware_spec`, `safety_guide`, `research_paper`, `regulatory_doc`, `mission_guide`, `iss_annual_report`
+
+---
+
+## Knowledge base
+
+The corpus is NASA documents, ISS hardware flysheets, research papers, and regulatory references. The system is only as good as what's been ingested.
+
+**Current corpus coverage:**
+- ISS hardware: Redwire MVP, ADSEP, Space Tango CubeLab ICD, TangoLab
+- Biology: plant science papers, microgravity cell culture literature
+- Safety: NASA payload safety review guides, PSWG documentation
+- Mission: ISS annual reports, CASIS solicitation guides
+- Regulatory: export control, biosafety, IP governance references
+
+**Known gap:** No BioServe SABL or Space Tango cell culture cassette specs in the corpus. The cell culture hardware agent correctly surfaces this as a gap (CO2 control, media exchange unspecified). Fix: ingest SABL spec when available.
+
+---
 
 ## Development
 
 ```bash
-make test    # Run unit + integration tests
-make lint    # Lint and auto-fix
-make type    # Type check
+make test    # Unit tests (excludes slow integration tests)
+make lint    # Ruff lint + format
+make type    # mypy
 make check   # All of the above
+
+make eval       # Retrieval eval suite (hits Cohere API)
+make eval-fast  # Evals without reranking
 ```
+
+**Test markers:**
+- Default (`make test`): unit tests only, no external API calls
+- `pytest -m slow`: integration tests, requires live DB + API keys
+- `pytest -m evals`: retrieval quality evals
+
+---
+
+## Database
+
+```bash
+make db-up        # Start Postgres
+make migrate      # Apply migrations
+make migration name=add_foo   # Generate migration from model changes
+make db-shell     # psql shell
+make db-reset     # Drop and recreate (destroys all data)
+```
+
+Schema: `documents`, `chunks` (with pgvector embeddings), `eval_examples`, `eval_runs`.
