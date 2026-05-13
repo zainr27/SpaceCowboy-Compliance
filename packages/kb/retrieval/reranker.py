@@ -37,7 +37,7 @@ async def rerank(
 
     client = _get_client()
     response = await client.rerank(
-        model="rerank-v3.5",
+        model="rerank-english-v3.0",
         query=query,
         documents=documents,
         top_n=top_n,
