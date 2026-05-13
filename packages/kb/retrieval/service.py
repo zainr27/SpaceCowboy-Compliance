@@ -4,52 +4,66 @@ import time
 
 import structlog
 
-from packages.kb.models.retrieval import RetrievalRequest, RetrievalResponse
+from packages.kb.models.retrieval import (
+    RetrievalRequest,
+    RetrievalResponse,
+    RetrievedChunk,
+)
 from packages.kb.retrieval.hybrid import hybrid_search
 from packages.kb.retrieval.reranker import rerank
 
 logger = structlog.get_logger(__name__)
 
 
-async def retrieve(request: RetrievalRequest) -> RetrievalResponse:
-    """Run hybrid search, optionally rerank, return structured response."""
-    t0 = time.monotonic()
+async def retrieve(req: RetrievalRequest) -> RetrievalResponse:
+    """Retrieve relevant chunks for a query.
 
-    chunks = await hybrid_search(
-        query=request.query,
-        source_types=request.source_types,
-        organization=request.organization,
-        k=request.k,
-        dense_weight=request.dense_weight,
+    Pipeline:
+    1. Hybrid search (dense + sparse) returns up to k candidates.
+    2. Optionally rerank candidates to produce top_n final results.
+
+    Sub-agents in Layer 3 call this with appropriate source_types filters.
+    """
+    overall_start = time.monotonic()
+
+    retrieval_start = time.monotonic()
+    candidates = await hybrid_search(
+        query=req.query,
+        source_types=req.source_types,
+        organization=req.organization,
+        k=req.k,
+        dense_weight=req.dense_weight,
     )
+    retrieval_ms = int((time.monotonic() - retrieval_start) * 1000)
 
-    retrieval_ms = int((time.monotonic() - t0) * 1000)
-    total_candidates = len(chunks)
+    total_candidates = len(candidates)
 
     rerank_ms: int | None = None
-    if request.use_reranker and chunks:
-        t1 = time.monotonic()
-        chunks = await rerank(
-            query=request.query,
-            chunks=chunks,
-            top_n=request.rerank_top_n,
+    final_chunks: list[RetrievedChunk]
+    if req.use_reranker and candidates:
+        rerank_start = time.monotonic()
+        final_chunks = await rerank(
+            query=req.query,
+            chunks=candidates,
+            top_n=req.rerank_top_n,
         )
-        rerank_ms = int((time.monotonic() - t1) * 1000)
+        rerank_ms = int((time.monotonic() - rerank_start) * 1000)
     else:
-        chunks = chunks[: request.rerank_top_n]
+        final_chunks = candidates[: req.rerank_top_n]
 
     logger.info(
         "retrieve_complete",
-        query_length=len(request.query),
-        total_candidates=total_candidates,
-        returned=len(chunks),
+        query_length=len(req.query),
+        candidates=total_candidates,
+        returned=len(final_chunks),
         retrieval_ms=retrieval_ms,
         rerank_ms=rerank_ms,
+        total_ms=int((time.monotonic() - overall_start) * 1000),
     )
 
     return RetrievalResponse(
-        chunks=chunks,
-        query=request.query,
+        chunks=final_chunks,
+        query=req.query,
         total_candidates=total_candidates,
         retrieval_ms=retrieval_ms,
         rerank_ms=rerank_ms,
