@@ -28,9 +28,9 @@ class ProfileConfig(BaseModel):
 PROFILES: dict[AgentProfile, ProfileConfig] = {
     AgentProfile.HARDWARE: ProfileConfig(
         profile=AgentProfile.HARDWARE,
-        source_types=["hardware_spec", "nasa_payload_guide"],
+        source_types=["hardware_spec", "nasa_payload_guide", "iss_annual_report"],
         default_top_n=8,
-        description="ISS hardware capabilities, power/volume/thermal constraints, compatibility with experimental protocols.",
+        description="ISS hardware capabilities, payload guides, hardware mentioned in mission reports.",
     ),
     AgentProfile.MICROGRAVITY: ProfileConfig(
         profile=AgentProfile.MICROGRAVITY,
