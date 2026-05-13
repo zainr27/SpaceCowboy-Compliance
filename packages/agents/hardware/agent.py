@@ -30,7 +30,7 @@ class HardwareAgent:
     """
 
     AGENT_NAME = "hardware_compatibility_agent"
-    DEFAULT_MODEL = "claude-sonnet-4-5"
+    DEFAULT_MODEL = "gpt-4o"
 
     def __init__(self, model: str | None = None) -> None:
         self._model = model or self.DEFAULT_MODEL

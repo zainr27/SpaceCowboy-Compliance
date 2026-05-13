@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     database_url: str = Field(...)
 
     # LLM providers
-    anthropic_api_key: str = Field(...)
+    openai_api_key: str = Field(...)
     voyage_api_key: str = Field(...)
     cohere_api_key: str = Field(...)
 

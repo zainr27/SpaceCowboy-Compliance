@@ -18,7 +18,7 @@ dependencies = [
     "pgvector>=0.3",
     "alembic>=1.13",
     # LLM / Embeddings
-    "anthropic>=0.40",
+    "openai>=1.30",
     "voyageai>=0.3",
     "cohere>=5.11",
     # Ingestion

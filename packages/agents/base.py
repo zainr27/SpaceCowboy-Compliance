@@ -3,8 +3,8 @@ from __future__ import annotations
 import time
 from typing import TypedDict, TypeVar
 
-import anthropic
 import structlog
+from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from apps.api.config import get_settings
@@ -40,10 +40,10 @@ class AgentResult(BaseModel):
     metadata: AgentMetadata
 
 
-def get_anthropic_client() -> anthropic.AsyncAnthropic:
-    """Lazy Anthropic client. One per process."""
+def get_openai_client() -> AsyncOpenAI:
+    """Lazy OpenAI client. One per process."""
     settings = get_settings()
-    return anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    return AsyncOpenAI(api_key=settings.openai_api_key)
 
 
 async def call_claude_structured(
@@ -51,16 +51,16 @@ async def call_claude_structured(
     system_prompt: str,
     user_prompt: str,
     output_schema: type[TOutput],
-    model: str = "claude-sonnet-4-5",
+    model: str = "gpt-4o",
     max_tokens: int = 4096,
     temperature: float = 0.0,
 ) -> tuple[TOutput, ClaudeCallMetadata]:
-    """Call Claude with a system prompt and user prompt, parse structured output.
+    """Call the LLM with a system prompt and user prompt, parse structured output.
 
     Returns (parsed_output, raw_metadata).
     Raises if the model returns invalid JSON or doesn't match the schema.
     """
-    client = get_anthropic_client()
+    client = get_openai_client()
 
     schema_json = output_schema.model_json_schema()
     augmented_system = (
@@ -72,16 +72,18 @@ async def call_claude_structured(
     )
 
     start = time.monotonic()
-    response = await client.messages.create(
+    response = await client.chat.completions.create(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
-        system=augmented_system,
-        messages=[{"role": "user", "content": user_prompt}],
+        messages=[
+            {"role": "system", "content": augmented_system},
+            {"role": "user", "content": user_prompt},
+        ],
     )
     duration_ms = int((time.monotonic() - start) * 1000)
 
-    text = "".join(block.text for block in response.content if block.type == "text").strip()
+    text = (response.choices[0].message.content or "").strip()
 
     if text.startswith("```"):
         lines = text.split("\n")
@@ -98,19 +100,23 @@ async def call_claude_structured(
         )
         raise
 
+    usage = response.usage
+    input_tokens = usage.prompt_tokens if usage else 0
+    output_tokens = usage.completion_tokens if usage else 0
+
     metadata: ClaudeCallMetadata = {
         "duration_ms": duration_ms,
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
         "model": model,
     }
 
     logger.info(
-        "claude_structured_complete",
+        "llm_structured_complete",
         model=model,
         duration_ms=duration_ms,
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         schema=output_schema.__name__,
     )
 
