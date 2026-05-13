@@ -1,5 +1,7 @@
 import pytest
 
+import packages.kb.storage.database as db_module
+
 
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
@@ -7,16 +9,18 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(autouse=True)
-def reset_db_engine() -> None:
-    """Reset the lazy DB engine singleton before each test.
+async def reset_db_engine() -> None:
+    """Dispose engine bound to the previous test's loop before each test.
 
-    pytest-asyncio creates a new event loop per test by default. asyncpg
-    connections are bound to the loop they were created on, so reusing an
-    engine across loops raises "Future attached to a different loop".
-    Resetting the singleton forces a fresh engine (and fresh connections)
-    on each test's loop.
+    Without dispose(), the connection pool is leaked across tests. At small
+    counts this is invisible; under load it exhausts Postgres max_connections.
     """
-    import packages.kb.storage.database as db_module
-
+    if db_module._engine is not None:
+        await db_module._engine.dispose()
+    db_module._engine = None
+    db_module._session_factory = None
+    yield
+    if db_module._engine is not None:
+        await db_module._engine.dispose()
     db_module._engine = None
     db_module._session_factory = None
