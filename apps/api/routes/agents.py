@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException
 
 from packages.agents.hardware.agent import HardwareAgent
 from packages.agents.hardware.schemas import HardwareAgentOutput, ProtocolRequirements
+from packages.agents.microgravity.agent import MicrogravityAgent
+from packages.agents.microgravity.schemas import MicrogravityAgentOutput
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -18,4 +20,20 @@ async def hardware_analyze(protocol: ProtocolRequirements) -> HardwareAgentOutpu
         raise HTTPException(
             status_code=500,
             detail=f"Hardware analysis failed: {type(e).__name__}",
+        ) from e
+
+
+@router.post("/microgravity/analyze", response_model=MicrogravityAgentOutput)
+async def microgravity_analyze(protocol: ProtocolRequirements) -> MicrogravityAgentOutput:
+    """Analyze a biotech protocol for microgravity adaptation requirements.
+
+    Returns structured modifications, expected behaviors, and research precedents.
+    """
+    try:
+        agent = MicrogravityAgent()
+        return await agent.analyze(protocol)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Microgravity agent failed: {type(e).__name__}: {e}",
         ) from e
