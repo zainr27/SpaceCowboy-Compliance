@@ -47,6 +47,23 @@ Results are persisted to the `eval_runs` table for trend tracking.
 
 **Corpus gap:** The ELV payload safety review document (NTRS 20130011541) is not yet in the corpus. The `safety_eclss_flammability_01` eval example currently targets ECLSS payload safety content as a stand-in. Add the ELV doc via `make ingest` when available and add a dedicated `safety_elv_review_01` example to cover that intent properly.
 
+## Agents
+
+```bash
+make hw-agent preset=cell_culture          # Hardware compatibility analysis
+make hw-agent preset=plant_growth
+make hw-agent preset=protein_crystallization
+make hw-agent preset=cell_culture top_n=12  # Override retrieval depth
+```
+
+The hardware agent uses multi-query retrieval: each protocol is decomposed into 2–3 orthogonal queries (capability, environmental, operational), run in parallel, merged by best-score-per-chunk, and deduped before the LLM reasoning pass. This pattern generalises to all sub-agents via `_decompose_query()`.
+
+### Hardware agent: known corpus gap
+
+The `cell_culture` preset scores low confidence (0.30) because the corpus lacks hardware specs that address (a) automated media exchange and (b) fine-grained CO2 control. MVP's flysheet mentions 5% CO2 but not the precise control range; ADSEP doesn't address CO2 at all.
+
+Fix: ingest specs for BioServe SABL, Space Tango cell culture cassettes, or any incubator-class ISS hardware. Address before the orchestrator layer — cell culture is a common protocol category and the gap will be visible in synthesised output.
+
 ## Development
 
 ```bash
