@@ -8,6 +8,8 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from apps.api.config import get_settings
+from packages.kb.agents.knowledge_base import Citation, KnowledgeBase
+from packages.kb.models.retrieval import RetrievedChunk
 
 logger = structlog.get_logger(__name__)
 
@@ -121,3 +123,122 @@ async def call_claude_structured(
     )
 
     return parsed, metadata
+
+
+class MultiQueryRetrievalResult(BaseModel):
+    """Merged result from running multiple retrieval queries in parallel."""
+
+    chunks: list[RetrievedChunk]
+    citations: list[Citation]
+    formatted_context: str
+    queries_used: list[str]
+    total_retrieval_ms: int
+    rerank_ms: int | None
+
+
+async def retrieve_multi_query(
+    *,
+    kb: KnowledgeBase,
+    queries: list[str],
+    per_query_k: int = 10,
+    final_top_n: int = 8,
+) -> MultiQueryRetrievalResult:
+    """Run multiple queries in parallel, merge by best score, return top-N chunks.
+
+    Deduplicates by chunk_id, keeping the highest rerank/fusion score per chunk.
+    """
+    start = time.monotonic()
+
+    results = await kb.search_many(
+        queries,
+        k=per_query_k,
+        top_n=per_query_k,
+        use_reranker=True,
+    )
+
+    merged: dict[str, RetrievedChunk] = {}
+    for result in results:
+        for chunk in result.chunks:
+            key = str(chunk.chunk_id)
+            score = chunk.rerank_score or chunk.fusion_score or 0.0
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = chunk
+            else:
+                existing_score = existing.rerank_score or existing.fusion_score or 0.0
+                if score > existing_score:
+                    merged[key] = chunk
+
+    sorted_chunks = sorted(
+        merged.values(),
+        key=lambda c: c.rerank_score or c.fusion_score or 0.0,
+        reverse=True,
+    )[:final_top_n]
+
+    citations = _build_citations_from_chunks(sorted_chunks)
+    formatted = _format_context_multi_query(queries, sorted_chunks, citations)
+
+    total_ms = int((time.monotonic() - start) * 1000)
+    rerank_values = [r.rerank_ms for r in results if r.rerank_ms is not None]
+    rerank_ms_total: int | None = sum(rerank_values) if rerank_values else None
+
+    logger.info(
+        "multi_query_retrieval_complete",
+        queries=len(queries),
+        merged_candidates=len(merged),
+        final_chunks=len(sorted_chunks),
+        total_ms=total_ms,
+    )
+
+    return MultiQueryRetrievalResult(
+        chunks=sorted_chunks,
+        citations=citations,
+        formatted_context=formatted,
+        queries_used=queries,
+        total_retrieval_ms=total_ms,
+        rerank_ms=rerank_ms_total,
+    )
+
+
+def _build_citations_from_chunks(chunks: list[RetrievedChunk]) -> list[Citation]:
+    """Build Citation objects from a list of RetrievedChunks."""
+    return [
+        Citation(
+            chunk_id=c.chunk_id,
+            document_id=c.document_id,
+            title=c.title,
+            source_url=c.source_url,
+            page_number=c.page_number,
+            section_path=c.section_path,
+            relevance_score=c.rerank_score or c.fusion_score or 0.0,
+        )
+        for c in chunks
+    ]
+
+
+def _format_context_multi_query(
+    queries: list[str],
+    chunks: list[RetrievedChunk],
+    citations: list[Citation],
+) -> str:
+    """Format merged multi-query chunks into a prompt-ready context block."""
+    if not chunks:
+        queries_str = "; ".join(queries)
+        return f"Queries: {queries_str}\n\nNo relevant sources found."
+
+    lines = ["Queries used:"]
+    for q in queries:
+        lines.append(f"  - {q}")
+    lines.append("")
+
+    for idx, (chunk, citation) in enumerate(zip(chunks, citations, strict=True), start=1):
+        header_parts = [f"[{idx}]", citation.title]
+        if citation.page_number:
+            header_parts.append(f"(p. {citation.page_number})")
+        elif citation.section_path:
+            header_parts.append(f"({citation.section_path})")
+        lines.append(" ".join(header_parts))
+        lines.append(chunk.content)
+        lines.append("")
+
+    return "\n".join(lines).rstrip()
