@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json as _json
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from apps.api.security import analysis_slot
 from packages.agents.hardware.agent import HardwareAgent
 from packages.agents.hardware.schemas import HardwareAgentOutput, ProtocolRequirements
 from packages.agents.microgravity.agent import MicrogravityAgent
@@ -19,7 +20,14 @@ from packages.orchestrator.executor import ParallelExecutor
 from packages.orchestrator.orchestrator import Orchestrator
 from packages.orchestrator.schemas import OrchestratorReport
 
-router = APIRouter(prefix="/agents", tags=["agents"])
+# Every route here fans out to LLM/embedding work, so the process-wide
+# concurrency cap (analysis_slot -> 429 when full) is applied at the router
+# level. API-key auth is applied at app.include_router in main.py.
+router = APIRouter(
+    prefix="/agents",
+    tags=["agents"],
+    dependencies=[Depends(analysis_slot)],
+)
 
 
 @router.post("/hardware/analyze", response_model=HardwareAgentOutput)

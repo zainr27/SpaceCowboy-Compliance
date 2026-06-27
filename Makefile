@@ -1,4 +1,4 @@
-.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest search agent-search hw-agent mg-agent safety-agent mission-agent reg-agent orchestrate
+.PHONY: help install dev test eval eval-fast lint type format db-up db-down db-shell db-reset clean ingest seed search agent-search hw-agent mg-agent safety-agent mission-agent reg-agent orchestrate
 
 help:
 	@echo "Available targets:"
@@ -64,6 +64,10 @@ ingest: ## Ingest a PDF. Usage: make ingest path=... title=... type=... url=...
 		--source-type "$(type)" \
 		--title "$(title)" \
 		--source-url "$(url)"
+
+seed: ## Bulk-ingest every PDF under corpus/ into the knowledge base
+	SSL_CERT_FILE=$$(uv run python -c "import certifi; print(certifi.where())") \
+	PYTHONPATH=. uv run python scripts/ingest_corpus.py
 
 search: ## Search the knowledge base. Usage: make search q="your query"
 	PYTHONPATH=. uv run python scripts/retrieve.py "$(q)"

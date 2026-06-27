@@ -1,10 +1,13 @@
 """CLI to ingest a single PDF into the knowledge base.
 
+For bulk-ingesting the whole corpus/ tree, use scripts/ingest_corpus.py
+(or `make seed`) instead.
+
 Usage:
     uv run python scripts/ingest_pdf.py \
-        --path corpus/nasa_payload_guides/iss_researchers_guide.pdf \
+        --path corpus/nasa_payload_guides/iss_benefits_humanity.pdf \
         --source-type nasa_payload_guide \
-        --title "ISS Researcher's Guide to Microgravity" \
+        --title "Benefits for Humanity from the ISS" \
         --source-url "https://www.nasa.gov/..."
 """
 

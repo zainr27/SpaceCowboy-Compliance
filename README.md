@@ -110,8 +110,18 @@ The knowledge base uses **Voyage AI `voyage-3-large`** dense embeddings + Postgr
 cp .env.example .env      # Add API keys: OPENAI_API_KEY, COHERE_API_KEY, VOYAGE_API_KEY
 make db-up                # Start Postgres + pgvector in Docker
 make migrate              # Apply schema migrations
+make seed                 # Ingest every PDF under corpus/ into the KB
 make dev                  # API at http://localhost:8000
 ```
+
+> **The knowledge base starts empty.** Corpus PDFs are gitignored
+> (`.gitignore`: `corpus/**/*.pdf`), so a fresh clone has no documents and the
+> KB is empty until you ingest. Drop PDFs into the `corpus/` subdirectories
+> (e.g. `corpus/nasa_payload_guides/`, `corpus/hardware_specs/`,
+> `corpus/papers/`) and run `make seed`. Without this step every agent runs
+> against an empty KB and the headline results below are not reproducible.
+> `make seed` skips already-ingested documents (checksum dedup), so it is safe
+> to re-run.
 
 **Required API keys:**
 - `OPENAI_API_KEY` — LLM reasoning (gpt-4o)
@@ -142,7 +152,15 @@ make mission-agent  preset=plant_growth      # Mission integration
 make reg-agent      preset=cell_culture      # Regulatory pathway
 ```
 
-### Ingesting new documents
+### Ingesting documents
+
+Bulk-ingest everything under `corpus/` (skips already-ingested docs):
+
+```bash
+make seed
+```
+
+Ingest a single PDF:
 
 ```bash
 make ingest path=path/to/doc.pdf title="Document Title" type=hardware_spec url=https://...
