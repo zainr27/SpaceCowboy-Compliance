@@ -14,6 +14,32 @@ from packages.agents.safety.schemas import SafetyAgentOutput
 AgentName = Literal["hardware", "microgravity", "safety", "mission", "regulatory"]
 
 
+class ScopeVerdict(BaseModel):
+    """Pre-flight judgment of whether a request is in this tool's domain.
+
+    This tool analyzes *biological/biochemical/physiological* experimental
+    protocols destined for spaceflight. A request that is clearly something
+    else (compute infrastructure, pure software, finance, etc.) is out of
+    scope and should be refused before the expensive five-agent run.
+    """
+
+    in_scope: bool = Field(
+        ...,
+        description="True if this is a biological experimental protocol for spaceflight.",
+    )
+    category: str = Field(
+        ...,
+        description="Short label for what the request actually is, e.g. "
+        "'biological_protocol', 'compute_infrastructure', 'software', 'other'.",
+    )
+    reason: str = Field(
+        ...,
+        min_length=10,
+        max_length=400,
+        description="One-sentence explanation of the judgment, for the user.",
+    )
+
+
 class AgentExecution(BaseModel):
     """Captures the result of a single sub-agent run."""
 
@@ -119,6 +145,10 @@ class OrchestratorReport(BaseModel):
     executor: Literal["parallel", "cascaded"] = "parallel"
     synthesizer: Literal["rule_based", "llm_mediated"] = "rule_based"
     agent_executions: list[AgentExecution]
+
+    # Scope guard verdict. Present when the pre-flight classifier ran; when
+    # in_scope is False the agents were skipped and this is an honest refusal.
+    scope: ScopeVerdict | None = None
 
     # Top-level synthesis
     executive_summary: ExecutiveSummary

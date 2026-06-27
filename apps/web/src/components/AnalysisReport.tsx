@@ -25,10 +25,32 @@ function ExecutiveSummaryCard({ summary, confidence }: {
   summary: OrchestratorReport['executive_summary']
   confidence: OrchestratorReport['confidence']
 }) {
+  // Soft signal for borderline in-scope runs: low aggregate confidence, or any
+  // single agent very unsure, means the grounding may be weak — say so plainly
+  // instead of letting the headline read as authoritative.
+  const agentScores = [
+    confidence.hardware,
+    confidence.microgravity,
+    confidence.safety,
+    confidence.mission,
+    confidence.regulatory,
+  ].filter((s): s is number => s !== null && s !== undefined)
+  const minAgent = agentScores.length ? Math.min(...agentScores) : 1
+  const lowConfidence = confidence.overall < 0.5 || minAgent < 0.35
+
   return (
     <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white overflow-hidden">
       <div className="h-0.5 bg-[var(--color-accent)]" />
       <div className="p-6">
+        {lowConfidence && (
+          <div className="flex gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 mb-5">
+            <span className="text-amber-500 shrink-0">△</span>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Low confidence — the corpus may not cover this protocol well. Treat these
+              findings as tentative and verify against primary sources.
+            </p>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-4 mb-5">
           <h2 className="font-serif text-xl text-[var(--color-ink-primary)] leading-snug">
             {summary.headline}

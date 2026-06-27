@@ -16,11 +16,18 @@ export interface ProtocolRequirements {
   intent?: 'research' | 'commercial' | 'clinical_pathway'
 }
 
+export interface ScopeVerdict {
+  in_scope: boolean
+  category: string
+  reason: string
+}
+
 export interface OrchestratorReport {
   protocol: ProtocolRequirements
   total_duration_ms: number
   executor: string
   synthesizer: string
+  scope?: ScopeVerdict | null
   agent_executions: Array<{
     agent: 'hardware' | 'microgravity' | 'safety' | 'mission' | 'regulatory'
     succeeded: boolean
@@ -108,6 +115,7 @@ export type StreamEvent =
       output?: unknown | null
     }
   | { type: 'synthesizing' }
+  | { type: 'out_of_scope'; category: string; reason: string }
   | { type: 'complete'; report: OrchestratorReport }
   | { type: 'error'; message: string }
 

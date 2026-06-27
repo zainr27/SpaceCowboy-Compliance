@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Protocol
 
 import structlog
 
+from packages.agents.base import LLM_TIMEOUT_S, RETRIEVAL_TIMEOUT_S
 from packages.agents.hardware.agent import HardwareAgent
 from packages.agents.hardware.schemas import HardwareAgentOutput, ProtocolRequirements
 from packages.agents.microgravity.agent import MicrogravityAgent
@@ -24,7 +25,15 @@ logger = structlog.get_logger(__name__)
 # Hard ceiling per sub-agent. A single agent that exceeds this is recorded as
 # a failure so the report still ships with the agents that did finish, rather
 # than the whole orchestration hanging on one slow upstream call.
-AGENT_TIMEOUT_S = 60.0
+#
+# This is sized against the agent's real serial worst case rather than a round
+# number: the retrieval phase is bounded by RETRIEVAL_TIMEOUT_S (Voyage embed +
+# hybrid SQL + Cohere rerank for all decomposed queries) and the single LLM
+# call is bounded by LLM_TIMEOUT_S, run back-to-back, plus a small headroom for
+# scheduling/serialization. Because the inner timeouts now actually bound their
+# calls, this ceiling is a true upper bound, not an aspiration.
+_AGENT_TIMEOUT_HEADROOM_S = 5.0
+AGENT_TIMEOUT_S = RETRIEVAL_TIMEOUT_S + LLM_TIMEOUT_S + _AGENT_TIMEOUT_HEADROOM_S  # 80.0s
 
 
 class ExecutionResults:
@@ -124,8 +133,14 @@ class ParallelExecutor:
     ) -> tuple[AgentExecution, object | None]:
         """Run a single agent coroutine, capturing success/failure.
 
-        Bounded by AGENT_TIMEOUT_S; a timeout is treated as a normal agent
-        failure (recorded, not raised) so the rest of the run proceeds.
+        Bounded by AGENT_TIMEOUT_S, which is itself the sum of the sub-call
+        ceilings the agent can hit serially (RETRIEVAL_TIMEOUT_S for the whole
+        multi-query retrieval phase + LLM_TIMEOUT_S for the single reasoning
+        call + headroom). A timeout is treated as a normal agent failure
+        (recorded, not raised) so the rest of the run proceeds. On expiry
+        asyncio.timeout cancels the coroutine, which propagates cancellation
+        into the in-flight OpenAI/Voyage/Cohere request at its next await point
+        rather than letting it run to completion in the background.
         """
         start = time.monotonic()
         try:
@@ -160,8 +175,16 @@ class ParallelExecutor:
     async def execute_streaming(
         self,
         protocol: ProtocolRequirements,
+        is_disconnected: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[dict, None]:
         """Run all five agents in parallel, yielding a progress event as each completes.
+
+        ``is_disconnected`` is an optional async predicate (e.g.
+        ``request.is_disconnected``). It is checked BEFORE kicking off the five
+        agents and again BEFORE the synthesis LLM call, so a client that closes
+        the connection does not pay for agent work or the executive-summary
+        gpt-4o call. On a detected disconnect the generator returns silently
+        without emitting further events.
 
         Yields:
             {"type": "progress", "agent": "hardware", "succeeded": True,
@@ -171,9 +194,31 @@ class ParallelExecutor:
             {"type": "synthesizing"}   # all agents done; building the summary
             {"type": "complete", "report": {...}}
             OR
+            {"type": "out_of_scope", "category": "...", "reason": "..."}
+            OR
             {"type": "error", "message": "..."}
         """
+        from packages.orchestrator.scope import classify_scope
         from packages.orchestrator.synthesizer import RuleBasedSynthesizer
+
+        async def _disconnected() -> bool:
+            return bool(await is_disconnected()) if is_disconnected is not None else False
+
+        # Don't even build the agent tasks / fire the upstream calls if the
+        # client is already gone.
+        if await _disconnected():
+            return
+
+        # Pre-flight scope gate: refuse clearly out-of-domain requests up front
+        # so we never stream five agents over an off-domain prompt.
+        verdict = await classify_scope(protocol)
+        if not verdict.in_scope:
+            yield {
+                "type": "out_of_scope",
+                "category": verdict.category,
+                "reason": verdict.reason,
+            }
+            return
 
         results = ExecutionResults()
 
@@ -222,6 +267,11 @@ class ParallelExecutor:
                 }
 
         total_ms = int((time.monotonic() - wall_start) * 1000)
+        # Don't pay for the gpt-4o executive-summary call if the client has
+        # already left — this is the single most expensive step and runs after
+        # all per-agent results are already streamed out.
+        if await _disconnected():
+            return
         # Signal that all agents are in and the cross-agent summary call has
         # begun, so the client can show a synthesis step instead of a dead gap.
         yield {"type": "synthesizing"}

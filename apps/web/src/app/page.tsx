@@ -6,10 +6,47 @@ import { AnalysisReport, AgentSections, type AgentKey } from '@/components/Analy
 import { AnalysisProgress } from '@/components/AnalysisProgress'
 import { analyzeProtocolStream, type ProtocolRequirements, type OrchestratorReport, type AgentProgress } from '@/lib/api'
 
+interface OutOfScopeContent {
+  kind: 'out_of_scope'
+  category: string
+  reason: string
+}
+
 interface Message {
   role: 'user' | 'assistant'
-  content: string | OrchestratorReport
+  content: string | OrchestratorReport | OutOfScopeContent
   timestamp: Date
+}
+
+function isOutOfScope(c: Message['content']): c is OutOfScopeContent {
+  return typeof c === 'object' && c !== null && 'kind' in c && c.kind === 'out_of_scope'
+}
+
+function OutOfScopeCard({ content }: { content: OutOfScopeContent }) {
+  return (
+    <div className="rounded-xl border border-[var(--color-border-subtle)] bg-white overflow-hidden max-w-[56rem] mx-auto">
+      <div className="h-0.5 bg-[var(--color-info)]" />
+      <div className="p-6">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[var(--color-info)] text-lg">⊘</span>
+          <h2 className="font-serif text-lg text-[var(--color-ink-primary)]">
+            Outside this tool&apos;s scope
+          </h2>
+        </div>
+        <p className="text-sm text-[var(--color-ink-secondary)] leading-relaxed mb-3">
+          {content.reason}
+        </p>
+        <p className="text-sm text-[var(--color-ink-secondary)] leading-relaxed">
+          Spacebio Translator analyzes <span className="text-[var(--color-ink-primary)]">biological
+          experimental protocols</span> destined for spaceflight — organisms, cell culture,
+          protein work, physiology. Describe an experiment like that and the five agents will run.
+        </p>
+        <p className="text-xs text-[var(--color-ink-tertiary)] mt-3 font-mono">
+          detected: {content.category.replace(/_/g, ' ')}
+        </p>
+      </div>
+    </div>
+  )
 }
 
 const EXAMPLE_CHIPS = [
@@ -68,6 +105,7 @@ export default function Home() {
 
     try {
       let finalReport: OrchestratorReport | null = null
+      let outOfScope: OutOfScopeContent | null = null
 
       for await (const event of analyzeProtocolStream(protocol)) {
         if (event.type === 'progress') {
@@ -81,6 +119,8 @@ export default function Home() {
           }))
         } else if (event.type === 'synthesizing') {
           setSynthesizing(true)
+        } else if (event.type === 'out_of_scope') {
+          outOfScope = { kind: 'out_of_scope', category: event.category, reason: event.reason }
         } else if (event.type === 'complete') {
           finalReport = event.report
         } else if (event.type === 'error') {
@@ -88,10 +128,11 @@ export default function Home() {
         }
       }
 
-      if (finalReport) {
+      const assistantContent = finalReport ?? outOfScope
+      if (assistantContent) {
         setMessages(prev => [
           ...prev,
-          { role: 'assistant', content: finalReport!, timestamp: new Date() },
+          { role: 'assistant', content: assistantContent, timestamp: new Date() },
         ])
         setInputValue('')
       }
@@ -161,6 +202,10 @@ export default function Home() {
                       {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
+                </div>
+              ) : isOutOfScope(message.content) ? (
+                <div className="mb-6">
+                  <OutOfScopeCard content={message.content} />
                 </div>
               ) : (
                 <div className="mb-6">

@@ -7,6 +7,7 @@ import structlog
 from packages.agents.hardware.schemas import ProtocolRequirements
 from packages.orchestrator.executor import ExecutionResults, Executor, ParallelExecutor
 from packages.orchestrator.schemas import OrchestratorReport
+from packages.orchestrator.scope import build_out_of_scope_report, classify_scope
 from packages.orchestrator.synthesizer import (
     RuleBasedSynthesizer,
     Synthesizer,
@@ -40,6 +41,18 @@ class Orchestrator:
             protocol_intent=protocol.intent,
         )
         start = time.monotonic()
+
+        # Pre-flight scope gate: refuse clearly out-of-domain requests before
+        # spending five agents + synthesis on them.
+        verdict = await classify_scope(protocol)
+        if not verdict.in_scope:
+            total_ms = int((time.monotonic() - start) * 1000)
+            logger.info(
+                "orchestrator_out_of_scope",
+                category=verdict.category,
+                total_ms=total_ms,
+            )
+            return build_out_of_scope_report(protocol, verdict, total_ms, self._executor.name)
 
         results: ExecutionResults = await self._executor.execute(protocol)
 
