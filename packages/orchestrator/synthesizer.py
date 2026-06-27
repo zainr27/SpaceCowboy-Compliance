@@ -59,8 +59,8 @@ class RuleBasedSynthesizer:
         logger.info("rule_based_synth_start")
 
         unified_citations = self._build_unified_citations(results)
-        confidence = self._compute_confidence(results)
         insights = self._detect_insights(results)
+        confidence = self._compute_confidence(results, insights)
         open_questions = self._aggregate_open_questions(results)
         executive_summary = await self._generate_executive_summary(protocol, results, confidence)
 
@@ -137,8 +137,24 @@ class RuleBasedSynthesizer:
         return sorted_citations
 
     @staticmethod
-    def _compute_confidence(results: ExecutionResults) -> ConfidenceProfile:
-        """Average confidence across successful agents."""
+    def _compute_confidence(
+        results: ExecutionResults,
+        insights: list[CrossAgentInsight] | None = None,
+    ) -> ConfidenceProfile:
+        """Aggregate per-agent confidence, calibrated for corpus coverage.
+
+        Per-agent scores are the agents' own self-reports (their dimension
+        judgment, left intact). The *overall* posture is damped when the corpus
+        demonstrably lacks coverage: a ``corpus_gap`` insight only fires when
+        two or more agents independently surface the same missing theme, which
+        is a reliable signal that the grounding is thin regardless of how
+        confident any single agent sounded.
+
+        We deliberately do NOT calibrate on reranker scores. Cross-encoder
+        relevance scores are poorly calibrated as *absolute* relevance — a
+        genuinely on-point flysheet can score ~0.0 — so using them here would
+        penalize correct answers and reward superficial lexical matches.
+        """
         scores: dict[str, float] = {}
         if results.hardware:
             scores["hardware"] = results.hardware.analysis.overall_confidence
@@ -151,7 +167,12 @@ class RuleBasedSynthesizer:
         if results.regulatory:
             scores["regulatory"] = results.regulatory.analysis.overall_confidence
 
-        overall = (sum(scores.values()) / len(scores)) if scores else 0.0
+        mean = (sum(scores.values()) / len(scores)) if scores else 0.0
+
+        num_gaps = sum(1 for i in (insights or []) if i.kind == "corpus_gap")
+        # Each independently-confirmed corpus gap shaves 20% off the aggregate,
+        # capped at 40%, so a thin-corpus run reads as tentative.
+        overall = mean * (1.0 - min(0.4, 0.2 * num_gaps)) if num_gaps else mean
 
         return ConfidenceProfile(
             hardware=scores.get("hardware"),
@@ -159,7 +180,7 @@ class RuleBasedSynthesizer:
             safety=scores.get("safety"),
             mission=scores.get("mission"),
             regulatory=scores.get("regulatory"),
-            overall=overall,
+            overall=round(overall, 4),
         )
 
     @staticmethod

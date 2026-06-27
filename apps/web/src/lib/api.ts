@@ -125,6 +125,22 @@ export interface AgentProgress {
   output?: unknown | null
 }
 
+// ── Gap-driven ingestion backlog ──────────────────────────────────────────────
+
+export interface GapBacklog {
+  total_runs: number
+  recurring_questions: Array<{ question: string; count: number }>
+  gap_themes: Array<{ theme: string; count: number; agents: string[] }>
+}
+
+export async function getGapBacklog(): Promise<GapBacklog> {
+  const response = await fetch(`${API_BASE_URL}/gaps/backlog`)
+  if (!response.ok) {
+    throw new ApiError(`Request failed: ${response.status}`, response.status)
+  }
+  return response.json()
+}
+
 export async function* analyzeProtocolStream(
   protocol: ProtocolRequirements,
 ): AsyncGenerator<StreamEvent> {

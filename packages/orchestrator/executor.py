@@ -198,6 +198,7 @@ class ParallelExecutor:
             OR
             {"type": "error", "message": "..."}
         """
+        from packages.orchestrator.gap_store import record_gaps
         from packages.orchestrator.scope import classify_scope
         from packages.orchestrator.synthesizer import RuleBasedSynthesizer
 
@@ -282,6 +283,7 @@ class ParallelExecutor:
                 total_duration_ms=total_ms,
                 executor_name=self.name,
             )
+            record_gaps(report)
             yield {"type": "complete", "report": report.model_dump(mode="json")}
         except Exception as e:
             yield {"type": "error", "message": f"{type(e).__name__}: {e}"}

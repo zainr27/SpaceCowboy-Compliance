@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.config import get_settings
 from apps.api.logging_config import configure_logging, get_logger
-from apps.api.routes import agents, health, kb, retrieve
+from apps.api.routes import agents, gaps, health, kb, retrieve
 from apps.api.security import require_api_key
 
 logger = get_logger(__name__)
@@ -44,3 +44,4 @@ _protected = [Depends(require_api_key)]
 app.include_router(retrieve.router, dependencies=_protected)
 app.include_router(kb.router, dependencies=_protected)
 app.include_router(agents.router, dependencies=_protected)
+app.include_router(gaps.router, dependencies=_protected)

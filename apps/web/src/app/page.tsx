@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { ProtocolInput } from '@/components/ProtocolInput'
 import { AnalysisReport, AgentSections, type AgentKey } from '@/components/AnalysisReport'
 import { AnalysisProgress } from '@/components/AnalysisProgress'
+import { CorpusGaps } from '@/components/CorpusGaps'
 import { analyzeProtocolStream, type ProtocolRequirements, type OrchestratorReport, type AgentProgress } from '@/lib/api'
 
 interface OutOfScopeContent {
@@ -188,6 +189,8 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+
+              <CorpusGaps />
             </div>
           )}
 

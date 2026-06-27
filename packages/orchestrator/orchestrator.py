@@ -6,6 +6,7 @@ import structlog
 
 from packages.agents.hardware.schemas import ProtocolRequirements
 from packages.orchestrator.executor import ExecutionResults, Executor, ParallelExecutor
+from packages.orchestrator.gap_store import record_gaps
 from packages.orchestrator.schemas import OrchestratorReport
 from packages.orchestrator.scope import build_out_of_scope_report, classify_scope
 from packages.orchestrator.synthesizer import (
@@ -63,6 +64,7 @@ class Orchestrator:
             total_duration_ms=total_ms,
             executor_name=self._executor.name,
         )
+        record_gaps(report)
 
         logger.info(
             "orchestrator_complete",

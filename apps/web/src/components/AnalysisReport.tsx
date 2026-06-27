@@ -223,9 +223,6 @@ function CitationList({ citations }: { citations: OrchestratorReport['citations'
                 <span className="text-xs text-[var(--color-ink-tertiary)]">
                   cited by {c.cited_by.join(', ')}
                 </span>
-                <span className="text-xs font-mono text-[var(--color-ink-tertiary)]">
-                  {c.relevance_score.toFixed(3)}
-                </span>
               </div>
             </div>
           </div>
@@ -488,6 +485,39 @@ const AGENT_SECTIONS: Array<{
   { key: 'regulatory', title: 'Regulatory Pathway', Content: RegulatoryContent },
 ]
 
+// Per-agent citation footer. The inline [N] markers in an agent's prose are
+// that agent's OWN local retrieval indices — they do NOT match the renumbered
+// unified Sources list at the bottom of the report. Rendering each agent's own
+// citations here, keyed by their local index, makes those [N] markers resolve
+// within the section the user is reading.
+interface ResolvedCitation {
+  index: number
+  title: string
+  page_number: number | null
+}
+
+function AgentCitations({ data }: { data: unknown }) {
+  const citations = (data as { citations?: ResolvedCitation[] } | null)?.citations
+  if (!citations || citations.length === 0) return null
+  const sorted = [...citations].sort((a, b) => a.index - b.index)
+  return (
+    <div className="mt-4 pt-3 border-t border-[var(--color-border-subtle)]">
+      <span className="text-xs text-[var(--color-ink-tertiary)] block mb-1.5">Cited in this section</span>
+      <div className="space-y-1">
+        {sorted.map(c => (
+          <div key={c.index} className="flex gap-2 text-xs text-[var(--color-ink-secondary)]">
+            <span className="font-mono text-[var(--color-accent)] shrink-0">[{c.index}]</span>
+            <span className="leading-snug">
+              {c.title}
+              {c.page_number ? <span className="text-[var(--color-ink-tertiary)]"> · p. {c.page_number}</span> : null}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * Renders one collapsible card per agent. Used live (only agents that have
  * streamed in are passed) and in the final report (all five). A section is
@@ -507,6 +537,7 @@ export function AgentSections({
         <div key={s.key} className="animate-fade-up">
           <AgentSection title={s.title} confidence={confidence[s.key]} defaultOpen={i === 0}>
             <s.Content data={outputs[s.key]} />
+            <AgentCitations data={outputs[s.key]} />
           </AgentSection>
         </div>
       ))}

@@ -20,6 +20,7 @@ logger = structlog.get_logger(__name__)
 async def ingest_pdf(
     pdf_path: Path,
     metadata: DocumentMetadata,
+    strategy: str = "hi_res",
 ) -> IngestionResult:
     """Run the full ingestion pipeline for a single PDF.
 
@@ -28,6 +29,11 @@ async def ingest_pdf(
     3. Chunk elements by title/section.
     4. Embed chunks in batches.
     5. Insert document + chunks atomically.
+
+    ``strategy`` is forwarded to the PDF loader. "hi_res" (default) gives the
+    best layout fidelity but needs poppler + a layout model and is slow; "fast"
+    (pdfminer, with a pypdf fallback) is much quicker and fine for bulk ingest
+    of text-based government PDFs.
     """
     start = time.monotonic()
     # Cheap one-time path ops at the start of an offline ingestion job — not the
@@ -54,7 +60,7 @@ async def ingest_pdf(
         )
 
     # Stage 1: parse
-    elements = load_pdf_elements(pdf_path)
+    elements = load_pdf_elements(pdf_path, strategy=strategy)
 
     # Stage 2: chunk
     raw_chunks = chunk_elements(elements)
