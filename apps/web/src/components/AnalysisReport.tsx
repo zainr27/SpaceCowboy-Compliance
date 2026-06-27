@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { OrchestratorReport } from '@/lib/api'
 import { ConfidenceBar } from './ConfidenceBar'
 
@@ -137,7 +137,7 @@ function CrossAgentInsights({ insights }: {
 
 // ── Collapsible agent section ─────────────────────────────────────────────────
 
-function AgentSection({ title, confidence, children, defaultOpen = false }: {
+export function AgentSection({ title, confidence, children, defaultOpen = false }: {
   title: string
   confidence: number | null | undefined
   children: React.ReactNode
@@ -449,9 +449,52 @@ function RegulatoryContent({ data }: { data: any }) {
   )
 }
 
+// ── Agent sections (shared by the live reveal and the final report) ────────────
+
+export type AgentKey = 'hardware' | 'microgravity' | 'safety' | 'mission' | 'regulatory'
+
+const AGENT_SECTIONS: Array<{
+  key: AgentKey
+  title: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Content: ({ data }: { data: any }) => React.ReactNode
+}> = [
+  { key: 'hardware', title: 'Hardware Compatibility', Content: HardwareContent },
+  { key: 'microgravity', title: 'Microgravity Adaptation', Content: MicrogravityContent },
+  { key: 'safety', title: 'Safety Screening', Content: SafetyContent },
+  { key: 'mission', title: 'Mission Integration', Content: MissionContent },
+  { key: 'regulatory', title: 'Regulatory Pathway', Content: RegulatoryContent },
+]
+
+/**
+ * Renders one collapsible card per agent. Used live (only agents that have
+ * streamed in are passed) and in the final report (all five). A section is
+ * rendered when its key is present in `outputs`, even if the value is null
+ * (a failed agent shows "No data").
+ */
+export function AgentSections({
+  outputs,
+  confidence,
+}: {
+  outputs: Partial<Record<AgentKey, unknown>>
+  confidence: Partial<Record<AgentKey, number | null>>
+}) {
+  return (
+    <>
+      {AGENT_SECTIONS.filter(s => s.key in outputs).map((s, i) => (
+        <div key={s.key} className="animate-fade-up">
+          <AgentSection title={s.title} confidence={confidence[s.key]} defaultOpen={i === 0}>
+            <s.Content data={outputs[s.key]} />
+          </AgentSection>
+        </div>
+      ))}
+    </>
+  )
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function AnalysisReport({ report }: { report: OrchestratorReport }) {
+export const AnalysisReport = memo(function AnalysisReport({ report }: { report: OrchestratorReport }) {
   return (
     <div className="space-y-4 max-w-[56rem] mx-auto">
       <div className="flex items-center gap-3 text-xs text-[var(--color-ink-tertiary)] font-mono">
@@ -466,28 +509,19 @@ export function AnalysisReport({ report }: { report: OrchestratorReport }) {
 
       <CrossAgentInsights insights={report.cross_agent_insights} />
 
-      <AgentSection title="Hardware Compatibility" confidence={report.confidence.hardware} defaultOpen>
-        <HardwareContent data={report.hardware} />
-      </AgentSection>
-
-      <AgentSection title="Microgravity Adaptation" confidence={report.confidence.microgravity}>
-        <MicrogravityContent data={report.microgravity} />
-      </AgentSection>
-
-      <AgentSection title="Safety Screening" confidence={report.confidence.safety}>
-        <SafetyContent data={report.safety} />
-      </AgentSection>
-
-      <AgentSection title="Mission Integration" confidence={report.confidence.mission}>
-        <MissionContent data={report.mission} />
-      </AgentSection>
-
-      <AgentSection title="Regulatory Pathway" confidence={report.confidence.regulatory}>
-        <RegulatoryContent data={report.regulatory} />
-      </AgentSection>
+      <AgentSections
+        outputs={{
+          hardware: report.hardware,
+          microgravity: report.microgravity,
+          safety: report.safety,
+          mission: report.mission,
+          regulatory: report.regulatory,
+        }}
+        confidence={report.confidence}
+      />
 
       <CitationList citations={report.citations} />
       <OpenQuestions questions={report.open_questions} />
     </div>
   )
-}
+})

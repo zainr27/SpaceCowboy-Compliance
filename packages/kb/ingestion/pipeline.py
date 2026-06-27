@@ -30,7 +30,9 @@ async def ingest_pdf(
     5. Insert document + chunks atomically.
     """
     start = time.monotonic()
-    pdf_path = pdf_path.resolve()
+    # Cheap one-time path ops at the start of an offline ingestion job — not the
+    # blocking request-path I/O ASYNC240 targets; anyio.Path would be overkill.
+    pdf_path = pdf_path.resolve()  # noqa: ASYNC240
     logger.info("ingestion_start", path=str(pdf_path), title=metadata.title)
 
     if not pdf_path.exists():

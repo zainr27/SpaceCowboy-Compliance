@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 from typing import TypedDict, TypeVar
 
 import structlog
@@ -16,7 +17,7 @@ logger = structlog.get_logger(__name__)
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
 
-class ClaudeCallMetadata(TypedDict):
+class LLMCallMetadata(TypedDict):
     duration_ms: int
     input_tokens: int
     output_tokens: int
@@ -42,13 +43,27 @@ class AgentResult(BaseModel):
     metadata: AgentMetadata
 
 
+# Per-request ceiling for a single LLM call. Beyond this the request is
+# abandoned so one slow upstream call can't stall the whole orchestration.
+LLM_TIMEOUT_S = 45.0
+
+
+@lru_cache(maxsize=1)
 def get_openai_client() -> AsyncOpenAI:
-    """Lazy OpenAI client. One per process."""
+    """Lazy, process-wide OpenAI client.
+
+    Cached so we reuse one httpx connection pool (keep-alive + a single TLS
+    handshake) across every call instead of rebuilding the client each time.
+    """
     settings = get_settings()
-    return AsyncOpenAI(api_key=settings.openai_api_key)
+    return AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        timeout=LLM_TIMEOUT_S,
+        max_retries=1,
+    )
 
 
-async def call_claude_structured(
+async def call_llm_structured(
     *,
     system_prompt: str,
     user_prompt: str,
@@ -56,7 +71,7 @@ async def call_claude_structured(
     model: str = "gpt-4o",
     max_tokens: int = 4096,
     temperature: float = 0.0,
-) -> tuple[TOutput, ClaudeCallMetadata]:
+) -> tuple[TOutput, LLMCallMetadata]:
     """Call the LLM with a system prompt and user prompt, parse structured output.
 
     Returns (parsed_output, raw_metadata).
@@ -78,6 +93,10 @@ async def call_claude_structured(
         model=model,
         max_tokens=max_tokens,
         temperature=temperature,
+        # Guarantee syntactically valid JSON from the model. The schema still
+        # lives in the system prompt to constrain *shape*; this just removes
+        # the prose/code-fence failure modes the manual parser used to hit.
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": augmented_system},
             {"role": "user", "content": user_prompt},
@@ -106,7 +125,7 @@ async def call_claude_structured(
     input_tokens = usage.prompt_tokens if usage else 0
     output_tokens = usage.completion_tokens if usage else 0
 
-    metadata: ClaudeCallMetadata = {
+    metadata: LLMCallMetadata = {
         "duration_ms": duration_ms,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

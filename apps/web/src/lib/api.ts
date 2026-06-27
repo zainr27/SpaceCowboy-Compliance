@@ -94,6 +94,8 @@ export async function analyzeProtocol(
 
 // ── Streaming types and function ──────────────────────────────────────────────
 
+export type AgentKey = 'hardware' | 'microgravity' | 'safety' | 'mission' | 'regulatory'
+
 export type StreamEvent =
   | {
       type: 'progress'
@@ -101,13 +103,18 @@ export type StreamEvent =
       succeeded: boolean
       duration_ms: number
       error: string | null
+      // Full agent result, present when the agent succeeded — lets the client
+      // reveal each section the moment it lands.
+      output?: unknown | null
     }
+  | { type: 'synthesizing' }
   | { type: 'complete'; report: OrchestratorReport }
   | { type: 'error'; message: string }
 
 export interface AgentProgress {
   succeeded: boolean
   duration_ms: number
+  output?: unknown | null
 }
 
 export async function* analyzeProtocolStream(

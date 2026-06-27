@@ -80,7 +80,7 @@ class HardwareGap(BaseModel):
 
 
 class HardwareAnalysis(BaseModel):
-    """The agent's structured output — what Claude produces directly."""
+    """The agent's structured output — what the LLM produces directly."""
 
     summary: str = Field(
         ...,
@@ -123,7 +123,7 @@ class ResolvedCitation(BaseModel):
 
 
 class HardwareAgentOutput(BaseModel):
-    """Full agent response: Claude's analysis + retrieval provenance added by agent code."""
+    """Full agent response: the LLM's analysis + retrieval provenance added by agent code."""
 
     analysis: HardwareAnalysis
     citations: list[ResolvedCitation]

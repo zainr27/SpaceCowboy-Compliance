@@ -6,7 +6,7 @@ import structlog
 
 from packages.agents.base import (
     MultiQueryRetrievalResult,
-    call_claude_structured,
+    call_llm_structured,
     retrieve_multi_query,
 )
 from packages.agents.hardware.schemas import ProtocolRequirements
@@ -70,7 +70,7 @@ class MicrogravityAgent:
             logger.warning("microgravity_agent_no_retrieval_results")
             return self._empty_result(retrieval)
 
-        analysis, claude_meta = await call_claude_structured(
+        analysis, llm_meta = await call_llm_structured(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=build_user_prompt(protocol, retrieval.formatted_context),
             output_schema=MicrogravityAnalysis,
@@ -94,7 +94,7 @@ class MicrogravityAgent:
             citations=resolved_citations,
             retrieval_chunks_used=len(retrieval.chunks),
             retrieval_ms=retrieval.total_retrieval_ms,
-            reasoning_ms=claude_meta["duration_ms"],
+            reasoning_ms=llm_meta["duration_ms"],
         )
 
     def _decompose_query(self, protocol: ProtocolRequirements) -> list[str]:

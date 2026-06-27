@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useMemo, useState } from 'react'
 import { ProtocolInput } from '@/components/ProtocolInput'
-import { AnalysisReport } from '@/components/AnalysisReport'
+import { AnalysisReport, AgentSections, type AgentKey } from '@/components/AnalysisReport'
 import { AnalysisProgress } from '@/components/AnalysisProgress'
 import { analyzeProtocolStream, type ProtocolRequirements, type OrchestratorReport, type AgentProgress } from '@/lib/api'
 
@@ -33,22 +33,38 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [completedAgents, setCompletedAgents] = useState<Record<string, AgentProgress>>({})
-  const [elapsed, setElapsed] = useState(0)
-  const conversationEndRef = useRef<HTMLDivElement>(null)
+  const [synthesizing, setSynthesizing] = useState(false)
+
+  // Outputs/confidence the live reveal feeds to AgentSections as each agent lands.
+  const liveOutputs = useMemo(() => {
+    const out: Partial<Record<AgentKey, unknown>> = {}
+    for (const [key, p] of Object.entries(completedAgents)) {
+      out[key as AgentKey] = p.output ?? null
+    }
+    return out
+  }, [completedAgents])
+
+  const liveConfidence = useMemo(() => {
+    const conf: Partial<Record<AgentKey, number | null>> = {}
+    for (const [key, p] of Object.entries(completedAgents)) {
+      const analysis = (p.output as { analysis?: { overall_confidence?: number } } | null)?.analysis
+      conf[key as AgentKey] = analysis?.overall_confidence ?? null
+    }
+    return conf
+  }, [completedAgents])
+
+  const hasLiveAgents = Object.keys(completedAgents).length > 0
 
   async function handleSubmit(protocol: ProtocolRequirements) {
     setError(null)
     setIsLoading(true)
     setCompletedAgents({})
-    setElapsed(0)
+    setSynthesizing(false)
 
     setMessages(prev => [
       ...prev,
       { role: 'user', content: protocol.description, timestamp: new Date() },
     ])
-
-    const startTime = Date.now()
-    const timer = setInterval(() => setElapsed(Date.now() - startTime), 100)
 
     try {
       let finalReport: OrchestratorReport | null = null
@@ -57,8 +73,14 @@ export default function Home() {
         if (event.type === 'progress') {
           setCompletedAgents(prev => ({
             ...prev,
-            [event.agent]: { succeeded: event.succeeded, duration_ms: event.duration_ms },
+            [event.agent]: {
+              succeeded: event.succeeded,
+              duration_ms: event.duration_ms,
+              output: event.output ?? null,
+            },
           }))
+        } else if (event.type === 'synthesizing') {
+          setSynthesizing(true)
         } else if (event.type === 'complete') {
           finalReport = event.report
         } else if (event.type === 'error') {
@@ -78,10 +100,9 @@ export default function Home() {
       setError(message)
       setMessages(prev => prev.slice(0, -1))
     } finally {
-      clearInterval(timer)
       setIsLoading(false)
       setCompletedAgents({})
-      setElapsed(0)
+      setSynthesizing(false)
     }
   }
 
@@ -149,14 +170,17 @@ export default function Home() {
             </div>
           ))}
 
-          {/* Loading state */}
+          {/* Loading state — progress tracker + agent cards revealed as they land */}
           {isLoading && (
-            <div className="animate-fade-up">
-            <AnalysisProgress
-              isActive={isLoading}
-              completed={completedAgents}
-              elapsed={elapsed}
-            />
+            <div className="space-y-4">
+              <div className="animate-fade-up">
+                <AnalysisProgress completed={completedAgents} synthesizing={synthesizing} />
+              </div>
+              {hasLiveAgents && (
+                <div className="max-w-[56rem] mx-auto space-y-4">
+                  <AgentSections outputs={liveOutputs} confidence={liveConfidence} />
+                </div>
+              )}
             </div>
           )}
 
@@ -168,8 +192,7 @@ export default function Home() {
             </div>
           )}
 
-          {/* Scroll anchor */}
-          <div ref={conversationEndRef} className="h-4" />
+          <div className="h-4" />
         </div>
       </div>
 

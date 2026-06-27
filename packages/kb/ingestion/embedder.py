@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 import structlog
 import voyageai
 
@@ -12,7 +14,10 @@ _BATCH_SIZE = 128  # Voyage API limit
 _MODEL = "voyage-3-large"
 
 
+@lru_cache(maxsize=1)
 def _get_client() -> voyageai.AsyncClient:
+    """Process-wide Voyage client, cached to reuse its connection pool across
+    the many per-query embedding calls a single orchestration makes."""
     settings = get_settings()
     return voyageai.AsyncClient(api_key=settings.voyage_api_key)
 

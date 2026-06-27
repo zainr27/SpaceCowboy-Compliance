@@ -6,7 +6,7 @@ from typing import Protocol
 
 import structlog
 
-from packages.agents.base import call_claude_structured
+from packages.agents.base import call_llm_structured
 from packages.agents.hardware.schemas import ProtocolRequirements
 from packages.orchestrator.executor import ExecutionResults
 from packages.orchestrator.schemas import (
@@ -304,7 +304,7 @@ Structured findings from sub-agents:
 Generate the executive summary."""
 
         try:
-            summary, _ = await call_claude_structured(
+            summary, _ = await call_llm_structured(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 output_schema=ExecutiveSummary,
@@ -392,13 +392,12 @@ Generate the executive summary."""
             )
         elif results.hardware and results.hardware.analysis.recommended_hardware:
             facility = (
-                f"Recommended hardware: "
-                f"{results.hardware.analysis.recommended_hardware[0].name}"
+                f"Recommended hardware: {results.hardware.analysis.recommended_hardware[0].name}"
             )
 
         return ExecutiveSummary(
             headline=(
-                f"Protocol analysis completed across " f"{results.succeeded_count} of 5 sub-agents."
+                f"Protocol analysis completed across {results.succeeded_count} of 5 sub-agents."
             ),
             facility_recommendation=facility,
             primary_microgravity_concern=None,

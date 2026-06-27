@@ -21,6 +21,11 @@ from packages.orchestrator.schemas import AgentExecution
 
 logger = structlog.get_logger(__name__)
 
+# Hard ceiling per sub-agent. A single agent that exceeds this is recorded as
+# a failure so the report still ships with the agents that did finish, rather
+# than the whole orchestration hanging on one slow upstream call.
+AGENT_TIMEOUT_S = 60.0
+
 
 class ExecutionResults:
     """Container holding the results from all sub-agents.
@@ -117,10 +122,15 @@ class ParallelExecutor:
         agent_name: str,
         coro: object,
     ) -> tuple[AgentExecution, object | None]:
-        """Run a single agent coroutine, capturing success/failure."""
+        """Run a single agent coroutine, capturing success/failure.
+
+        Bounded by AGENT_TIMEOUT_S; a timeout is treated as a normal agent
+        failure (recorded, not raised) so the rest of the run proceeds.
+        """
         start = time.monotonic()
         try:
-            output = await coro  # type: ignore[misc]
+            async with asyncio.timeout(AGENT_TIMEOUT_S):
+                output = await coro  # type: ignore[misc]
             duration_ms = int((time.monotonic() - start) * 1000)
             chunks_used = getattr(output, "retrieval_chunks_used", 0)
             return (
@@ -154,8 +164,11 @@ class ParallelExecutor:
         """Run all five agents in parallel, yielding a progress event as each completes.
 
         Yields:
-            {"type": "progress", "agent": "hardware", "succeeded": True, "duration_ms": 3200, "error": null}
-            ... (one per agent, in completion order)
+            {"type": "progress", "agent": "hardware", "succeeded": True,
+             "duration_ms": 3200, "error": null, "output": {...} | null}
+            ... (one per agent, in completion order — output carries the
+                 agent's full result so the client can reveal it immediately)
+            {"type": "synthesizing"}   # all agents done; building the summary
             {"type": "complete", "report": {...}}
             OR
             {"type": "error", "message": "..."}
@@ -183,6 +196,11 @@ class ParallelExecutor:
             for task in done:
                 execution, output = await task
                 results.executions.append(execution)
+                output_json = (
+                    output.model_dump(mode="json")  # type: ignore[attr-defined]
+                    if (execution.succeeded and output is not None)
+                    else None
+                )
                 if execution.succeeded and output is not None:
                     if execution.agent == "hardware":
                         results.hardware = output  # type: ignore[assignment]
@@ -200,9 +218,13 @@ class ParallelExecutor:
                     "succeeded": execution.succeeded,
                     "duration_ms": execution.duration_ms,
                     "error": execution.error,
+                    "output": output_json,
                 }
 
         total_ms = int((time.monotonic() - wall_start) * 1000)
+        # Signal that all agents are in and the cross-agent summary call has
+        # begun, so the client can show a synthesis step instead of a dead gap.
+        yield {"type": "synthesizing"}
         try:
             report = await RuleBasedSynthesizer().synthesize(
                 protocol=protocol,
@@ -231,6 +253,5 @@ class CascadedExecutor:
 
     async def execute(self, protocol: ProtocolRequirements) -> ExecutionResults:
         raise NotImplementedError(
-            "CascadedExecutor is reserved for future implementation. "
-            "Use ParallelExecutor for now."
+            "CascadedExecutor is reserved for future implementation. Use ParallelExecutor for now."
         )
